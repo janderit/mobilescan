@@ -4,13 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast), v0.4 (UI polish),
-v0.5 (multi-page PDFs), v0.6 (loupe previews while dragging), v0.7 (shear / perspective
-correction), v0.8 (auto-detect for frame and tone), v0.9 (pinch zoom on the image in the
-captured and edit views) and v0.10 (live document detection in the camera view with auto-bake
-on capture) are implemented. The repository contains the product spec (`README.md`),
-design intent documents with per-version definitions, icons and mockups (`intent/`), and the
-TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
+Versions v0.1 through v0.10 are implemented: capture + share, crop/rotate, brightness/contrast,
+UI polish, multi-page PDFs, loupe previews while dragging, shear / perspective correction,
+auto-detect for frame and tone, pinch zoom in the captured and edit views, and live document
+detection in the camera view with auto-bake on capture. The repository contains the product spec
+(`README.md`), design intent documents with per-version definitions, icons and mockups
+(`intent/`), and the TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
 ## Commands
 
@@ -52,11 +51,14 @@ Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
 the bilingual (DE/EN) product page with Impressum and Datenschutzhinweis, deployed to the site root
 (template in the repo, rendered file git-ignored). Inside `src/`: `geometry.ts` is a barrel over
 `angles.ts`, `affine.ts`, `homography.ts`, `frame.ts` and `layout.ts`; the app shell `app.ts` holds
-the state machine and the transitions, with the screens in `camera-view.ts` (video, overlay, live
-detector, detect toggle), `captured-view.ts` (page header, stage, button bar, popover, share sheet),
-`editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `scan.ts` owns the page list. `detect.ts` is
-the canvas glue (`DetectScratch`, `detectFrameIn`) and a barrel over `detect-edges.ts`, `detect-frame.ts`,
-`detect-tracker.ts` and `detect-tone.ts`.
+the state machine and the transitions (`main.ts` only mounts it, so jsdom tests can drive it), with
+the screens in `start-view.ts`, `error-view.ts` (camera errors), `camera-view.ts` (video, overlay,
+live detector, detect toggle), `captured-view.ts` (page header, stage, button bar, popover, share
+sheet), `editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `update-prompt.ts` drives the
+start page's update button over `update.ts`; `scan.ts` owns the page list over `pages.ts`.
+`detect.ts` is the canvas glue (`DetectScratch`, `detectFrameIn`) and a barrel over
+`detect-edges.ts`, `detect-frame.ts`, `detect-tracker.ts` and `detect-tone.ts`. Every module starts
+with a header comment that states its job and its purity (DOM or not); read it before editing.
 
 Read in this order before implementing anything:
 
@@ -82,22 +84,95 @@ Hard constraints from the spec that shape every design decision:
 
 ## Core UX model (spec plus decisions)
 
-The capture frame is the central concept:
+The capture frame is the central concept. These are the invariants an implementer must not break;
+the intent files hold the reasoning, the named constants in the code hold the numbers.
 
-- Camera view shows a dashed DIN A-format frame (1:sqrt2) in portrait, 90% of the *visible* captured width (the video is displayed with `object-fit: cover`, which crops the sides of a 3:4 camera image on tall phones; the frame is fitted into the visible part so the dashes are always on screen). The full image is captured and kept; only the frame area is displayed. The margin, at least 10%, exists so that later rotation/cropping has material to work with.
-- **Cropping never modifies pixels.** It only updates the stored frame geometry (`cx, cy, width, height, angle` in image pixels). Crop handles (four edges independently; since v0.7 the corners shear instead of cropping) operate in frame-local coordinates, because the frame may already be rotated. The image stays still on screen; the frame is what moves and rotates. Aspect is free; the frame may not leave the image. Two types carry this: `Frame` (`src/model.ts`) is the general shape and may carry `angle` and `corners`; `UprightFrame` (`angle: 0`, no `corners`) is the type of every stored frame (`Page.frame`, `Capture.frame`) and of what `initialFrame`, `bakeLayout`/`warpLayout` and every bake return, so the compiler rejects a pending frame reaching the stages, the share code or a page. Only the crop/rotate view's pending frame, detection results and the frame editing helpers use `Frame`; `uprightFrame(frame)` in `src/frame.ts` converts once angle 0 and no offsets are established and throws otherwise; `scaleFrame` is generic so a scaled static frame stays upright.
-- **Rotation:** dragging around the frame boundary gives fine skew correction, clamped to ±15° around the nearest right angle. A separate "rotate 90° right" button turns in 90° steps and swaps frame width/height. Both accumulate in `angle` and are baked into the image on confirm, with white fill in exposed areas, after which `angle` is 0 again. Sign convention: `angle` is the frame's rotation relative to the image, positive = clockwise on screen (y-down); the 90° button *subtracts* 90° so the baked image turns clockwise. Display in the crop/rotate view (decision 2026-09-22): the image is drawn turned by the base angle (multiples of 90°), so 90° taps are visible and the frame appears upright; during fine rotation the image stays still and only the frame turns. The frame may stick out of the image after rotation (that area becomes white fill); crop drags may not push it out further.
-- **Brightness/contrast** uses one slider with a segmented toggle (brightness 0.5..1.5, contrast 0.5..4.0 since v0.8, colour temperature -1..1 as a red/blue channel gain of up to 20%, tick at neutral, which sits at the centre for every value: the native range input runs a linear 0..1000 scale and `toneFraction`/`toneFromFraction` map it piecewise-linearly) plus a grayscale toggle button. The view shows the frame region only. The preview is the CSS filter chain `brightness(b) contrast(c) url(#temperature) grayscale(1)` on the display canvas (no pixel work while dragging; the temperature step is an inline SVG `feColorMatrix` in sRGB); on confirm the chain is baked into the whole captured image via the 2D context `filter` property when it consists of shorthand functions only, otherwise (non-neutral temperature, or no `filter` support) through the per-pixel lookup-table loop in `src/tone.ts`. Neutral values leave the image untouched; values reset to neutral on each visit and edits accumulate in the image.
-- **Share** opens a sheet with a three-level compression control (JPEG quality 0.5 / 0.75 / 0.92), then embeds the frame region on a fixed A4 page scaled to fit (orientation follows the crop; borders on one axis are accepted) and hands the PDF to the Web Share API. Success returns to the start page and discards the image; cancel keeps the captured view.
-- **Polish (v0.4).** Camera failures show an icon-only error screen (warning, retry, back) whose status label names the cause. Share and bake failures show the warning icon briefly over the current view and leave the image untouched. Every screen change pushes a history entry and `popstate` acts as the current screen's back button (`src/navigation.ts`), so hardware back never leaves the app mid-scan. Screens cross-fade in 150 ms (`FADE_MS`; `App` writes it to `--fade` on the root so the styles follow it), the popover scales in from the edit button, a white flash plus vibration confirms the shutter; all off under `prefers-reduced-motion`. Baking runs behind the busy overlay, deferred until the overlay has painted. Backgrounding the page stops the camera stream and returning restarts it. The manifest carries a maskable icon rendered by `scripts/render-icons.mjs`. The app shell lives in `src/app.ts` (`src/main.ts` only mounts it) so jsdom tests can drive it.
-- **Multi-page (v0.5).** The app holds a list of pages (`src/model.ts` `Page`, `src/pages.ts`) instead of one capture. [+] on the captured view parks the current page (full image as JPEG blob at quality 0.95, canvas released) and opens the camera; the new capture is appended and becomes current. Only the current page holds a full-resolution canvas; switching pages parks one and wakes the other behind the busy overlay. A page is re-encoded only if a bake changed it (`dirty`); cropping only updates the frame. With two or more pages a header [previous] "n/m" [next] sits above the image ("n/m" is the second text exception). Back with several pages removes the current page and shows the previous one (the next one if the first was removed); with one page it is the v0.4 retake. Camera back after [+] returns to the page shown before. Share encodes every page's frame region in order and builds one A4 page per scan (`buildPdf` takes a list). Soft limit 20 pages, [+] disabled at the limit. Page switches push no history entry.
-- **Loupes (v0.6).** While a drag is in progress in the crop/rotate view, round magnified views of the affected frame corners sit in the centre of the stage: corner handle 1, edge handle 2 (side by side for n/s, stacked for e/w), fine rotation 4 in a 2x2 grid in corner order (body drags no longer exist since v0.7). The pure geometry lives in `src/loupe.ts` (corner selection, cluster layout, suppression, the loupe's affine transform); `src/editor.ts` owns four `<canvas>` loupes created with the view. Each loupe is centred on its frame corner in image coordinates, drawn with the main view's base rotation at 3x the view scale, capped at 2 device pixels per image pixel; per `pointermove` it copies a source square of about 100 image pixels via `drawImage` and strokes the whole frame polygon through the loupe transform. Loupes appear on the first `pointermove` (a tap shows nothing), vanish on `pointerup`/`pointercancel`, never take pointer events, and when the drag starts within 24 px of the centred cluster the cluster is shifted away from the finger (vertically, else horizontally; `placeLoupes`), suppressed only if no shift fits the stage. No fade, no data model change.
-- **Shear (v0.7).** `Frame.corners` holds optional frame-local offsets `[nw, ne, se, sw]` of the four corners from the rectangle corners; absent or below 0.5 px means rectangle, and only the editor's pending frame ever carries non-zero offsets. Crop and shear share one mode (decision 2026-09-22, after the first device test): the segmented control is [crop+shear|rotate] with the shear icon, it is the default, and it shows all eight handles. A corner handle moves that corner's offset on its own by the pointer delta in frame-local coordinates (`moveCorner`), clamped per axis so the quadrilateral stays convex, every edge stays at least 10 % of the image width, and a corner may not leave the image beyond where it already is. An edge handle crops the underlying rectangle as in v0.2 and keeps the offsets. The frame body cannot be dragged (the v0.2 pan was dropped). The frame is drawn as the quadrilateral (`<polygon>`) in both modes with the shade following it; corner handles sit on the displaced corners and edge handles on the quadrilateral's edge midpoints (`frameOverflow`/`insideFrame`/`handleLocalPosition` use the quadrilateral, `quadValid` is part of the drag clamp). The 90° button permutes the offsets (`nw <- sw, ne <- nw, se <- ne, sw <- se`, each turned by (x, y) -> (-y, x)) so the quadrilateral turns rigidly with the image. A shear corner drag shows one loupe. Confirm (`bakeFrame` in `src/bake.ts`): without offsets the v0.2 `bakeRotation` path, unchanged; with offsets `warpLayout` (`src/geometry.ts`) builds the homography (DLT, 8x8 Gaussian elimination) from the quadrilateral to an upright rectangle of the mean opposite edge lengths, sizes the canvas to the warped image clipped to that rectangle plus 25 % per side (and always containing it) under the pixel cap, and `src/warp.ts` resamples the whole image in one pass with bilinear sampling in strips of 256 output rows (source read once via `getImageData`, half-resolution retry when that allocation fails). Rotation and shear are baked in one resample; afterwards the frame is the target rectangle with angle 0 and no offsets.
-- **Auto-detect (v0.8).** Both edit views carry a magic-wand button left of confirm; the maths is pure `ImageData` work in `src/detect.ts`, the working copies are rendered by `sampleImage` (`src/canvas.ts`, a temporary canvas drawn through an affine transform, transparent where the image does not reach, so those pixels never count). Frame: `frameWorkingLayout` renders the pending rectangle (offsets ignored) plus 5 % outward in frame-local orientation with the longer side at 800 px; per edge, the band from 15 % inside to 5 % outside is sampled every 4 px along the edge (3 px box blur along, signed central difference across: only a luminance drop going outward, paper to table, counts), each sample line contributes the such peak nearest to the frame line that reaches 35 % of the line's largest and 12/255 per pixel, searching the inside 15 % first and the outside 5 % only when the inside holds none (so the paper edge wins over a stronger line of print further in, steps beyond the frame cannot displace an edge found inside, and the dark table's edge against bright surroundings is ignored; refined after the device tests from the intent's unsigned "largest gradient", at the cost of dark paper on a white desk), a repeated-median line fit follows and the edge is accepted with 60 % inliers within 2 px and a mean inlier gradient of 12/255; unfound edges keep the frame edge. The four lines intersect, the corners are mapped back and `frameFromCorners` builds the frame (rotation from the long edges clamped by `clampSkew` around the current base, sizes from mean opposite sides, centroid, residuals as v0.7 offsets when 1.5 px or more). No edge found, or a result that is too small or not convex: the view calls `onNotice` (the v0.4 warning) and keeps the frame. Synchronous, no busy overlay. Tone: `toneWorkingLayout` renders the inner 90 % of the frame at 500 px, `paperLevels` reads the background (histogram mode above 0.4, refined ±8 bins) and the print (1st percentile; assumed `background - 0.5` when closer than 0.2), `toneForLevels` solves `b = 1/(w+k)`, `c = (w+k)/(w-k)` clamped to the ranges, grayscale on, temperature neutral. The view measures the source image (not the preview) and shows the result as a pending tone. Both bars now hold seven 44 px targets: on a compact bar the buttons are 44 px with 4 px gaps and 12 px side padding, the tone segmented control has 3 px padding (333 px of 336 on a 360 px viewport).
-
-- **Zoom (v0.9).** Pinch zoom and pan on the captured view, the crop/rotate view and the brightness/contrast view; view state only (`ZoomState { scale, tx, ty }` in `src/zoom.ts`, a similarity in stage CSS pixels composed on top of the view's fitted transform, `composeZoom`), never stored, baked or shared. Range 1 to the lesser of 8 and 2 device pixels per image pixel (`maxZoomScale`); the pan is clamped so the content covers the stage per axis, else centred (`clampZoom`; content is the frame region in the captured and tone views, the union of image and frame bounding box in the crop/rotate view); scale 1 is always the fitted view (no rubber band). `src/zoom-gesture.ts` (`ZoomGesture`) is the shared tracker: Pointer Events only, two tracked pointers for the pinch (`pinchZoom`: similarity from the old to the new finger pair, rotation ignored, midpoint held at the scale cap), one-finger pan where the view's `oneFingerPan(point)` predicate allows it (always in the captured and tone views; in the crop/rotate view only in crop mode and only when the finger lands clear of every handle's 44 px target, `handleAt`, so handles keep priority and rotate mode keeps one finger for rotation), double tap (two taps within 300 ms and 24 px, no movement beyond 10 px) toggling fitted and 3x at the tap (`doubleTapZoom`). The views forward their pointer events to it first and skip their own handling when it consumed one; a second finger calls `onGestureStart` (the crop/rotate view cancels its drag and loupes, the pending frame stays where it is; the captured view drops its pending swipe), and after a pinch the remaining finger pans where the predicate allows it or does nothing until it lifts (rotate mode, or resting on a handle); it never starts a drag. One-finger pan replaces the page swipe while zoomed; swipes work only in the fitted view. Rendering: the stage canvas has the stage size in device pixels (`sizeDisplayCanvas`, `MAX_DPR` 2 in `src/canvas.ts`) and is drawn from the full-resolution image through the composed transform, only the visible source rectangle (`drawImageThrough`); during a gesture the canvas sits in a `.zoom-wrapper` that gets a CSS transform relative to the drawn zoom (`relativeZoom`; no drawing per move), on release the canvas is redrawn crisply and the wrapper reset. The crop/rotate overlay is not wrapped: `transform` is the composed transform, so handles, shade, hit tests and loupes are recomputed per move and keep their size; loupes are skipped when the composed scale is already at the loupe scale (3x fitted, capped). The captured and tone views share `src/frame-stage.ts` (`FrameStage`: frame region letterboxed by `fitRectTransform`, one-finger pan, swipe callbacks for the captured view); the 2048 px preview canvas of v0.1 is gone. The zoom resets on open of an edit view, on 90°, on every entry to the captured view (`switchScreen`) and whenever the captured stage gets a capture (page switch, bake). Stages have `touch-action: none`.
-
-- **Live detect (v0.10).** The camera view runs the v0.8 edge search on the live video from the static frame (`src/live-detect.ts`, `LiveDetector`: `requestVideoFrameCallback` where available, else `requestAnimationFrame`, at most one run per 150 ms, `sampleImage` of the `<video>` through `frameWorkingLayout(liveFrame)` in track pixels; the detector reuses one `WorkingCanvas` and one luminance buffer, `DetectScratch` in `src/detect.ts`, across runs). `detectFrameIn(image, frame, imageWidth, rule?, scratch?)` is the shared pipeline behind the wand, the still detection and the live loop. The rule is strict (`detectFrameStrict` in `src/detect.ts`: all four edges found and the rotation inside the skew range, via `detectFrameDetailed` which reports `found` and `clamped`; the wand's `detectFrame` keeps applying partial results), and `DetectionTracker` adds hysteresis (three agreeing runs, corners within 3 % of the frame width of the smoothed outline or, before found, the last hit; two misses before lost; a miss keeps the last hit for comparison) plus exponential smoothing (factor 0.5) of the reported corners. The overlay is an `<svg class="camera-frame">` with an evenodd shade path and a `<polygon class="camera-outline">` whose points are the static rectangle or, with `found`, the smoothed corners mapped through the cover transform (`renderCameraFrame`); `--frame-found` green with a 150 ms stroke transition, none under reduced motion; a 15 ms vibration on the switch to green. The toggle is the magic-wand button right of the shutter (`aria-pressed`, "Dokument automatisch erkennen"), `state.liveDetect`, on by default, session state only and never persisted; `syncLiveDetector` starts, restarts (frame changed) or stops the loop on every `layoutFrame`, and `stopSession` stops it. Capture (`takePhoto`, now async): with the toggle on, `detectStill` runs the strict rule once more on the still from the scaled static frame; a hit becomes the page frame and is baked with `bakeFrame` behind the busy overlay (`frameNeedsBake` decides whether pixel work is needed; the page is created with the static frame and the bake replaces it, so a failed bake leaves the static frame); a miss keeps the static frame and, if the live outline was green at the shutter, shows the v0.4 notice. The live result is never used for the bake. No automatic capture.
+- **The frame is geometry, not pixels.** The camera shows a dashed DIN A-format frame (1:sqrt2,
+  portrait) fitted into the *visible* part of the cover-cropped video; the full camera image is
+  captured and kept, and the frame (`cx, cy, width, height` in image pixels) says which part is the
+  document. Cropping only updates the frame; the margin around it is the material that rotation and
+  shear work with. Handles operate in frame-local coordinates, the image stays still on screen and
+  the frame moves. The frame may stick out of the image (white fill on bake), but a drag may not
+  push it out further, and every edge keeps at least `MIN_FRAME_FRACTION` of the image width.
+- **`Frame` vs `UprightFrame`** (`src/model.ts`). `Frame` may carry a rotation `angle` and corner
+  offsets `corners` (frame-local `[nw, ne, se, sw]`, present only when an offset reaches
+  `CORNER_EPSILON`; build them through `withCorners` in `src/frame.ts` so `hasCornerOffsets` and
+  `corners !== undefined` agree). `UprightFrame` (`angle: 0`, no `corners`) is the type of every
+  stored frame (`Page.frame`, `Capture.frame`), of `initialFrame` and of every bake result, so the
+  compiler rejects a pending frame reaching a stage, the share code or a page. Only the crop/rotate
+  view's pending frame, detection results and the editing helpers use `Frame`; `uprightFrame`
+  converts once angle 0 and no offsets are established and throws otherwise.
+- **Angle sign convention.** `angle` is the frame's rotation relative to the image, positive =
+  clockwise on screen (y-down). Fine rotation is clamped to `MAX_SKEW` around the nearest right
+  angle; the "rotate 90° right" button *subtracts* 90°, swaps width and height and permutes the
+  corner offsets so the quadrilateral turns rigidly with the image. The crop/rotate view draws the
+  image turned by the base angle (multiples of 90°) so the frame appears upright; during fine
+  rotation only the frame turns (`intent/2026-09-22-spec-assessment-and-decisions.md`).
+- **Crop and shear share one mode.** [crop+shear|rotate], crop+shear the default with all eight
+  handles: an edge handle crops the rectangle and keeps the offsets, a corner handle moves that
+  corner's offset alone, clamped so the quadrilateral stays convex and no corner leaves the image
+  beyond where it already is. The frame body cannot be dragged. The frame is drawn as the
+  quadrilateral with the shade following it; loupes (`src/loupe.ts`, `src/editor.ts`) magnify the
+  affected corners during a drag and never take pointer events.
+- **Bake semantics** (`src/bake.ts`). Confirm in the crop/rotate view resamples the whole image
+  once: rotation alone through `bakeLayout`, rotation plus offsets through the homography of
+  `warpLayout` and `src/warp.ts`, with white fill in exposed areas under the pixel cap
+  `MAX_CAPTURE_PIXELS`. Afterwards the frame is the upright target rectangle without offsets;
+  `frameNeedsBake` says whether pixel work is needed at all. Baking runs behind the busy overlay,
+  deferred until it has painted; a failed bake leaves image and frame untouched and shows the notice.
+- **Tone chain.** One slider with a segmented toggle (brightness, contrast, colour temperature;
+  neutral always at the slider centre) plus a grayscale toggle. The preview is the CSS filter chain
+  `brightness(b) contrast(c) url(#temperature) grayscale(1)` on the display canvas (no pixel work
+  while dragging, the temperature step is an inline SVG `feColorMatrix`); confirm bakes the same
+  chain into the whole image through the 2D context `filter` property when it consists of shorthand
+  functions only, otherwise through the per-pixel loop in `src/tone.ts`, which mirrors the Filter
+  Effects spec so both paths agree. Neutral values leave the image untouched; values reset to
+  neutral on each visit and edits accumulate in the image.
+- **Auto-detect.** The wand buttons of both edit views and the live loop share the pipeline in
+  `src/detect.ts`: `sampleImage` (`src/canvas.ts`) renders a working copy through an affine
+  transform, transparent where the image does not reach so those pixels never count, and pure
+  `ImageData` maths runs on it; see the constants in `src/detect-edges.ts`, `src/detect-frame.ts`
+  and `src/detect-tone.ts`. The wand keeps partial results and shows a pending frame or tone;
+  nothing found calls `onNotice` and keeps the current state. Synchronous, no busy overlay; the tone
+  wand measures the source image, not the preview.
+- **Live detect and the capture rule.** The camera view runs the strict rule (`detectFrameStrict`)
+  on the video with `DetectionTracker` hysteresis (`src/live-detect.ts`) and turns the outline green
+  on a hit. The toggle right of the shutter is session state, on by default, never persisted. On
+  capture with the toggle on, the still is detected once more from the scaled static frame; a hit
+  becomes the page frame and is baked behind the busy overlay (the page is created with the static
+  frame, so a failed bake leaves it), a miss keeps the static frame and shows the notice if the
+  outline was green. The live result is never used for the bake. There is no automatic capture.
+- **Share.** Three compression levels (`src/quality.ts`); every page's frame region is encoded as
+  JPEG in order and placed on a fixed A4 page scaled to fit (orientation follows the crop, borders
+  on one axis accepted; `src/pdf.ts`), and one PDF goes to the Web Share API. Success returns to
+  the start page and discards every page; cancel keeps the captured view; failure shows the notice.
+- **Multi-page memory rule.** A scan is a list of pages (`src/scan.ts`, `src/pages.ts`) of which
+  only the current one holds a full-resolution canvas; the others are parked as full-image JPEG
+  blobs and woken behind the busy overlay. A page is re-encoded only when a bake changed it
+  (`dirty`); cropping only updates its frame. [+] parks the current page and opens the camera, the
+  capture is appended and becomes current; camera back after [+] returns to the page shown before.
+  Back with several pages removes the current page; with one page it is the retake. "n/m" in the
+  page header is the second text exception. Soft limit `MAX_PAGES`. Page switches push no history
+  entry.
+- **Zoom is view state only.** Pinch, one-finger pan and double tap on the captured, crop/rotate and
+  tone stages (`src/zoom.ts`, `src/zoom-gesture.ts`, `src/frame-stage.ts`) compose a similarity on
+  top of the fitted transform; it is never stored, baked or shared, scale 1 is always the fitted
+  view, and it resets on every entry to a view, on 90° and on every new capture in the stage. The
+  views hand pointer events to the gesture first; handles keep priority over the pan, rotate mode
+  keeps one finger for rotation, a second finger cancels a drag without moving the pending frame,
+  and page swipes work only in the fitted view. The stage canvas has the stage size in device
+  pixels (`MAX_DPR`) and draws only the visible source rectangle, so memory does not grow with the
+  zoom.
+- **History and back.** Every screen change pushes a history entry and `popstate` acts as the
+  current screen's back button (`src/navigation.ts`), so hardware back never leaves the app
+  mid-scan. Camera failures show the icon-only error screen whose status label names the cause.
+  Backgrounding the page stops the camera stream and returning restarts it.
+- **Motion.** Screens cross-fade in `FADE_MS` (written to `--fade` on the root), the popover scales
+  in from the edit button, a white flash plus vibration confirms the shutter, the live outline's
+  colour transitions; all off under `prefers-reduced-motion`. Notices show the warning icon for
+  `NOTICE_MS` over the current view.
+- **No persistence.** Pages, frames, tones, zoom and the live-detect toggle live in memory for the
+  session; nothing is written to storage, and the service worker precaches only the app shell.
 
 Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → edit popover (crop/rotate, brightness/contrast).
 Camera view: [back] top-left, [shutter] with the live-detect toggle to its right, dashed outline (grey static frame or green detected document).
