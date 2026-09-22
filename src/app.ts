@@ -555,9 +555,9 @@ export class App {
     // v0.10: the still is detected once more from the static frame; the live
     // result is only feedback (the still is grabbed later than the last video frame).
     const detected = liveDetect ? detectStill(image, staticFrame) : null;
-    const frame = detected ?? staticFrame;
     // Appended after the last page; the previous current page was parked by [+].
-    const page = newPage({ image, frame });
+    // The page starts with the static frame; a detected document is baked in below.
+    const page = newPage({ image, frame: staticFrame });
     this.scan.add(page);
     this.renderPreview();
     this.state.screen = 'captured';
@@ -565,12 +565,11 @@ export class App {
     this.state.menuOpen = false;
     this.render();
     if (detected) {
+      // The bake hands back an upright frame; a failed bake leaves the page
+      // with its image and the static frame.
       await this.runBusy(() => {
         applyCapture(page, bakeFrame(asCapture(page), detected));
       }, 'Entzerren fehlgeschlagen', frameNeedsBake(detected));
-      // A failed bake leaves the image with the detected frame still pending (rotated or with
-      // offsets), which the rest of the app never expects on a page: fall back to the static frame.
-      if (frameNeedsBake(page.frame)) page.frame = staticFrame;
       this.renderPreview();
       this.render();
     } else if (liveFound) {

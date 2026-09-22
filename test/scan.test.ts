@@ -2,10 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Scan } from '../src/scan';
 import { newPage } from '../src/pages';
-import { MAX_PAGES, type Frame, type Page } from '../src/model';
+import { MAX_PAGES, type Page, type UprightFrame } from '../src/model';
 import { stubCanvas, type CanvasStub } from './canvas-stub';
 
-const frame: Frame = { cx: 1500, cy: 2000, width: 2000, height: 2800, angle: 0 };
+const frame: UprightFrame = { cx: 1500, cy: 2000, width: 2000, height: 2800, angle: 0 };
 
 function page(): Page {
   const c = document.createElement('canvas');

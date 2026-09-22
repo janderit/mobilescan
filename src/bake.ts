@@ -5,7 +5,7 @@
  */
 
 import type { Capture, Frame } from './model';
-import { bakeLayout, hasCornerOffsets, warpLayout, withoutCorners } from './geometry';
+import { bakeLayout, hasCornerOffsets, uprightFrame, warpLayout, withoutCorners } from './geometry';
 import { createCanvas, releaseCanvas } from './canvas';
 import { warpImage } from './warp';
 import {
@@ -25,7 +25,7 @@ import {
  */
 export function bakeRotation(capture: Capture, frame: Frame): Capture {
   if (frame.angle === 0) {
-    return { image: capture.image, frame };
+    return { image: capture.image, frame: uprightFrame(frame) };
   }
   const { image } = capture;
   const layout = bakeLayout(image.width, image.height, frame);

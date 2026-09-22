@@ -16,7 +16,7 @@ import {
   loupesSuppressed,
   placeLoupes,
 } from '../src/loupe';
-import type { Capture, Frame } from '../src/model';
+import type { Capture, Frame, UprightFrame } from '../src/model';
 import { stubCanvas, type CanvasStub } from './canvas-stub';
 
 const deg = (d: number): number => (d * Math.PI) / 180;
@@ -25,7 +25,7 @@ const H = 4000;
 const VIEW_W = 360;
 const VIEW_H = 480;
 
-function frame(overrides: Partial<Frame> = {}): Frame {
+function frame(overrides: Partial<UprightFrame> = {}): UprightFrame {
   return { cx: 1500, cy: 2000, width: 2000, height: 2800, angle: 0, ...overrides };
 }
 
@@ -150,7 +150,7 @@ describe('loupe magnification', () => {
 
 describe('loupe transform', () => {
   it.each([0, deg(-90), deg(90), deg(180)])('meets the main view on the frame edge (base %f)', (base) => {
-    const f = frame({ angle: base + deg(4) });
+    const f: Frame = { ...frame(), angle: base + deg(4) };
     const view = viewTransform(W, H, base, VIEW_W, VIEW_H);
     const scale = loupeScale(affineScale(view), 2);
     const [nw, ne] = frameCorners(f) as [{ x: number; y: number }, { x: number; y: number }];

@@ -4,14 +4,24 @@
  * Held in memory only; never persisted.
  */
 
-/** Frame geometry in captured-image pixel coordinates. */
-export interface Frame {
+/** The rectangle part of a frame, in captured-image pixel coordinates. */
+interface FrameRect {
   /** centre */
   cx: number;
   cy: number;
   /** size along the frame's own axes */
   width: number;
   height: number;
+}
+
+/**
+ * Frame geometry in captured-image pixel coordinates: the general shape, which
+ * may be rotated (`angle`) and sheared (`corners`). Only the pending frame of
+ * the crop/rotate view, detection results and the intermediate results of the
+ * frame editing helpers carry a rotation or corner offsets; a frame stored on a
+ * page is an `UprightFrame`.
+ */
+export interface Frame extends FrameRect {
   /** radians, 0 in v0.1 */
   angle: number;
   /**
@@ -21,7 +31,21 @@ export interface Frame {
    * pending frame of the crop/rotate view ever carries non-zero offsets; a
    * confirmed frame never does.
    */
-  corners?: [Point, Point, Point, Point];
+  corners?: [Point, Point, Point, Point] | undefined;
+}
+
+/**
+ * A frame that is a plain axis-aligned rectangle of the image: angle 0 and no
+ * corner offsets. This is the invariant of every frame stored on a `Page` (and
+ * so of `Capture.frame`, the stages, the share code): every bake produces one,
+ * `initialFrame` produces one, and a capture whose bake fails keeps the static
+ * frame. Assignable to `Frame`, so the read-only geometry accepts both; the
+ * reverse needs a bake (`bakeFrame`) or `uprightFrame` where angle 0 and no
+ * offsets have been established.
+ */
+export interface UprightFrame extends FrameRect {
+  angle: 0;
+  corners?: undefined;
 }
 
 /** A point in image or frame-local pixels. */
@@ -34,8 +58,8 @@ export interface Point {
 export interface Capture {
   /** full captured image, never cropped */
   image: HTMLCanvasElement;
-  /** frame in image pixel coordinates */
-  frame: Frame;
+  /** frame in image pixel coordinates, always upright */
+  frame: UprightFrame;
 }
 
 /**
@@ -49,7 +73,8 @@ export interface Page {
   blob: Blob | null;
   width: number;
   height: number;
-  frame: Frame;
+  /** always upright: angle 0, no corner offsets */
+  frame: UprightFrame;
   /** True after a bake changed the pixels since the page was last parked. */
   dirty: boolean;
 }

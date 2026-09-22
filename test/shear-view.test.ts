@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CropRotateView } from '../src/editor';
 import { bakeFrame, frameNeedsBake } from '../src/bake';
 import { applyAffine, quadCorners, viewTransform } from '../src/geometry';
-import type { Capture, Frame } from '../src/model';
+import type { Capture, Frame, UprightFrame } from '../src/model';
 import { stubCanvas, type CanvasStub } from './canvas-stub';
 
 const W = 3000;
@@ -11,7 +11,7 @@ const H = 4000;
 const VIEW_W = 360;
 const VIEW_H = 480;
 
-function frame(overrides: Partial<Frame> = {}): Frame {
+function frame(overrides: Partial<UprightFrame> = {}): UprightFrame {
   return { cx: 1500, cy: 2000, width: 2000, height: 2800, angle: 0, ...overrides };
 }
 

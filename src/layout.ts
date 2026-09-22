@@ -4,7 +4,7 @@
  * (rotation and shear). Pure maths; the drawing happens elsewhere.
  */
 
-import type { Frame, Point } from './model';
+import type { Frame, Point, UprightFrame } from './model';
 import { applyAffine, imageCorners, mapQuad, rotationAbout, type Affine } from './affine';
 import { applyHomography, homographyFromPoints, multiplyHomography, type Homography } from './homography';
 import { boundsOf, frameCorners, quadCorners, scaleFrame, type Rect } from './frame';
@@ -111,7 +111,7 @@ export interface BakeLayout {
   /** Maps old image pixels to new canvas pixels (rotate by -angle about the frame centre, then shift). */
   transform: Affine;
   /** The frame in the new canvas: same size, angle 0. */
-  frame: Frame;
+  frame: UprightFrame;
 }
 
 /**
@@ -141,7 +141,7 @@ export function bakeLayout(
   let width = Math.max(1, maxX - minX);
   let height = Math.max(1, maxY - minY);
   let transform = rotationAbout(-frame.angle, pivot, -minX, -minY);
-  let baked: Frame = { cx: frame.cx - minX, cy: frame.cy - minY, width: frame.width, height: frame.height, angle: 0 };
+  let baked: UprightFrame = { cx: frame.cx - minX, cy: frame.cy - minY, width: frame.width, height: frame.height, angle: 0 };
   // The layout only handles the rectangle; displaced corners take `warpLayout`.
   if (width * height > maxPixels) {
     // A skewed image's bounding box can exceed the canvas pixel cap (iOS):
@@ -204,7 +204,7 @@ export interface WarpLayout {
   /** Maps old image pixels to new canvas pixels. */
   homography: Homography;
   /** The frame in the new canvas: the upright target rectangle, angle 0, no offsets. */
-  frame: Frame;
+  frame: UprightFrame;
 }
 
 /**

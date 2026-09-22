@@ -5,7 +5,7 @@
  * No DOM access: everything here is plain number maths so it can be unit tested.
  */
 
-import type { Frame, Point } from './model';
+import type { Frame, Point, UprightFrame } from './model';
 import { mapQuad, type Quad } from './affine';
 import { normalizeAngle } from './angles';
 
@@ -33,7 +33,7 @@ const FRAME_FILL = 0.9;
  * dashes are always fully on screen. The margin outside the frame is then
  * whatever the capture holds beyond the screen, which is at least 10 %.
  */
-export function initialFrame(imageWidth: number, imageHeight: number, visible?: Rect): Frame {
+export function initialFrame(imageWidth: number, imageHeight: number, visible?: Rect): UprightFrame {
   const region: Rect = visible ?? { x: 0, y: 0, width: imageWidth, height: imageHeight };
   let width = FRAME_FILL * region.width;
   let height = width * SQRT2;
@@ -51,14 +51,17 @@ export function initialFrame(imageWidth: number, imageHeight: number, visible?: 
   };
 }
 
-/** Scales a frame from one image size to another (e.g. track size -> capture canvas size). */
-export function scaleFrame(frame: Frame, factor: number): Frame {
-  const scaled: Frame = {
+/**
+ * Scales a frame from one image size to another (e.g. track size -> capture
+ * canvas size). Keeps the frame's kind: an upright frame stays upright.
+ */
+export function scaleFrame<F extends Frame>(frame: F, factor: number): F {
+  const scaled: F = {
+    ...frame,
     cx: frame.cx * factor,
     cy: frame.cy * factor,
     width: frame.width * factor,
     height: frame.height * factor,
-    angle: frame.angle,
   };
   if (frame.corners) {
     scaled.corners = mapQuad(frame.corners, (p) => ({ x: p.x * factor, y: p.y * factor }));
@@ -67,12 +70,23 @@ export function scaleFrame(frame: Frame, factor: number): Frame {
 }
 
 /**
- * The frame as a source rectangle for `drawImage`, in image pixels.
- * A stored (confirmed) page frame is always upright, angle 0 and without corner
- * offsets, because every bake produces one; only the editor's pending frame is
- * rotated or sheared. This therefore reads the rectangle only.
+ * The frame as an `UprightFrame` once the caller has established that it is
+ * one: angle 0 and no corner offsets. Throws otherwise, because a rotated or
+ * sheared frame must go through a bake, never onto a page.
  */
-export function frameSourceRect(frame: Frame): Rect {
+export function uprightFrame(frame: Frame): UprightFrame {
+  if (frame.angle !== 0 || hasCornerOffsets(frame)) {
+    throw new Error('frame is not upright');
+  }
+  return { cx: frame.cx, cy: frame.cy, width: frame.width, height: frame.height, angle: 0 };
+}
+
+/**
+ * The frame as a source rectangle for `drawImage`, in image pixels. Only an
+ * upright frame (a stored page frame) is a plain rectangle of the image; the
+ * editor's pending frame is rotated or sheared and has no such rectangle.
+ */
+export function frameSourceRect(frame: UprightFrame): Rect {
   return {
     x: frame.cx - frame.width / 2,
     y: frame.cy - frame.height / 2,

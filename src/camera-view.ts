@@ -8,7 +8,7 @@
  */
 
 import * as icons from './icons';
-import type { Frame, Point } from './model';
+import type { Frame, Point, UprightFrame } from './model';
 import { iconButton, el, prefersReducedMotion, svgEl } from './ui';
 import { coverTransform, frameToViewRect, initialFrame, visibleImageRect, type CoverTransform, type Quad } from './geometry';
 import { stopCamera, type CameraSession } from './camera';
@@ -55,7 +55,7 @@ export class CameraView {
 
   private currentSession: CameraSession | null = null;
   /** Frame shown over the live video, in track pixel coordinates. */
-  private frame: Frame | null = null;
+  private frame: UprightFrame | null = null;
   /** Track pixels -> viewport pixels of the camera screen. */
   private cover: CoverTransform | null = null;
 
@@ -101,7 +101,7 @@ export class CameraView {
   }
 
   /** The static frame over the live video in track pixels, null while closed or unlaid. */
-  get liveFrame(): Frame | null {
+  get liveFrame(): UprightFrame | null {
     return this.frame;
   }
 
@@ -207,15 +207,16 @@ export class CameraView {
 
   /** Starts, restarts or stops the live detection to match the session, the toggle and the frame. */
   private syncLiveDetector(frameChanged: boolean): void {
-    const wanted = this.currentSession !== null && this.detectEnabled && this.frame !== null;
-    if (!wanted) {
+    const session = this.currentSession;
+    const frame = this.frame;
+    if (!session || !this.detectEnabled || !frame) {
       this.liveDetector.stop();
       this.liveState = { found: false, corners: null };
       return;
     }
     if (frameChanged || !this.liveDetector.running) {
       this.liveState = { found: false, corners: null };
-      this.liveDetector.start(this.frame as Frame, (this.currentSession as CameraSession).width);
+      this.liveDetector.start(frame, session.width);
     }
   }
 

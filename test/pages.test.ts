@@ -2,9 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyCapture, asCapture, newPage, parkPage, releasePage, wakePage } from '../src/pages';
 import { stubCanvas, type CanvasStub } from './canvas-stub';
-import type { Frame } from '../src/model';
+import type { UprightFrame } from '../src/model';
 
-const frame: Frame = { cx: 1500, cy: 2000, width: 2000, height: 2800, angle: 0 };
+const frame: UprightFrame = { cx: 1500, cy: 2000, width: 2000, height: 2800, angle: 0 };
 
 function canvas(width = 3000, height = 4000): HTMLCanvasElement {
   const c = document.createElement('canvas');

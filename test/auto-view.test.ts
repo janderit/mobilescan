@@ -4,7 +4,7 @@ import { CropRotateView } from '../src/editor';
 import { ToneView } from '../src/tone-view';
 import { quadCorners } from '../src/geometry';
 import { toneFraction, type Tone } from '../src/tone';
-import type { Capture, Frame } from '../src/model';
+import type { Capture, Frame, UprightFrame } from '../src/model';
 import { stubCanvas, type CanvasStub } from './canvas-stub';
 import * as detect from '../src/detect';
 
@@ -23,7 +23,7 @@ const real = await vi.importActual<typeof import('../src/detect')>('../src/detec
 const W = 3000;
 const H = 4000;
 
-function capture(frame: Partial<Frame> = {}): Capture {
+function capture(frame: Partial<UprightFrame> = {}): Capture {
   const image = document.createElement('canvas');
   image.width = W;
   image.height = H;

@@ -7,9 +7,11 @@ import {
   frameSourceRect,
   frameToViewRect,
   scaleFrame,
+  uprightFrame,
   visibleImageRect,
   initialFrame,
 } from '../src/geometry';
+import type { Frame, UprightFrame } from '../src/model';
 
 describe('initialFrame', () => {
   it('clamps the height when 0.9 * width * sqrt2 exceeds 0.9 * height', () => {
@@ -174,5 +176,26 @@ describe('scaleFrame', () => {
   it('scales centre and size, keeps the angle', () => {
     const frame = scaleFrame({ cx: 100, cy: 200, width: 50, height: 70, angle: 0.1 }, 0.5);
     expect(frame).toEqual({ cx: 50, cy: 100, width: 25, height: 35, angle: 0.1 });
+  });
+});
+
+describe('uprightFrame', () => {
+  const rect = { cx: 100, cy: 200, width: 50, height: 70 };
+
+  it('returns the rectangle of a frame with angle 0 and no offsets', () => {
+    const pending: Frame = { ...rect, angle: 0, corners: [{ x: 0.2, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }] };
+    expect(uprightFrame(pending)).toEqual({ ...rect, angle: 0 });
+  });
+
+  it('throws for a rotated or sheared frame', () => {
+    expect(() => uprightFrame({ ...rect, angle: 0.01 })).toThrow();
+    const sheared: Frame = { ...rect, angle: 0, corners: [{ x: 3, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }] };
+    expect(() => uprightFrame(sheared)).toThrow();
+  });
+
+  it('scaleFrame keeps an upright frame upright', () => {
+    const upright: UprightFrame = { ...rect, angle: 0 };
+    const scaled: UprightFrame = scaleFrame(upright, 2);
+    expect(scaled).toEqual({ cx: 200, cy: 400, width: 100, height: 140, angle: 0 });
   });
 });
