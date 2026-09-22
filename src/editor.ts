@@ -20,10 +20,11 @@
  * cancels the drag in progress. Zoomed in, one finger pans too, but only in
  * crop mode and only when it lands clear of every handle's touch target: the
  * handles keep priority, and in rotate mode one finger always rotates.
- * `transform` is the composed `zoom ∘ fitted` transform, so hit tests,
- * handles, shade and loupes need no zoom-specific code. During a gesture the
- * canvas moves with a CSS transform on its wrapper and the overlay is
- * recomputed per move; on release the canvas is redrawn crisply.
+ * The canvas, the gesture and the redraw belong to a `ZoomStage`
+ * (`zoom-stage.ts`); its composed `zoom ∘ fitted` transform is what hit
+ * tests, handles, shade and loupes use, so they need no zoom-specific code.
+ * During a gesture the canvas moves with a CSS transform on its wrapper and
+ * the overlay is recomputed per move; on release the canvas is redrawn.
  */
 
 import * as icons from './icons';
@@ -51,13 +52,13 @@ import {
   type Point,
   type Rect,
 } from './geometry';
-import { displayDpr, drawImageThrough, releaseCanvas, sizeDisplayCanvas } from './canvas';
+import { displayDpr } from './canvas';
 import { detectFrameIn } from './detect';
 import { loupeScale } from './loupe';
 import { LoupeCluster } from './loupe-cluster';
 import { iconButton, segmentButton, svgEl } from './ui';
-import { ZoomGesture } from './zoom-gesture';
-import { composeZoom, maxZoomScale, sameZoom, type ZoomState } from './zoom';
+import type { ZoomState } from './zoom';
+import { ZoomStage } from './zoom-stage';
 
 export type EditMode = 'crop' | 'rotate';
 
@@ -88,8 +89,7 @@ const degrees = (radians: number): number => (radians * 180) / Math.PI;
 export class CropRotateView {
   readonly element: HTMLElement;
 
-  private readonly stage: HTMLElement;
-  private readonly canvas: HTMLCanvasElement;
+  private readonly stage: ZoomStage;
   private readonly overlay: SVGSVGElement;
   private readonly shade: SVGPathElement;
   private readonly frameGroup: SVGGElement;
@@ -98,28 +98,13 @@ export class CropRotateView {
   private readonly arc: SVGPathElement;
   private readonly modeButtons: Record<EditMode, HTMLButtonElement>;
   private readonly loupes: LoupeCluster;
-  private readonly gesture: ZoomGesture;
-  private readonly resizeObserver: ResizeObserver | null;
 
   private capture: Capture | null = null;
   private pending: Frame | null = null;
   private mode: EditMode = 'crop';
-  /** The fitted view: image turned by the base angle and letterboxed. */
-  private fitted: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-  /** The composed display transform `zoom ∘ fitted` (image pixel -> CSS pixel). */
-  private transform: Affine = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-  /** Base angle and zoom the display canvas was last drawn with. */
-  private drawnBase: number | null = null;
-  private drawnZoom: ZoomState | null = null;
   private drag: Drag | null = null;
 
   constructor(private readonly callbacks: EditorCallbacks) {
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'edit-canvas';
-    const wrapper = document.createElement('div');
-    wrapper.className = 'zoom-wrapper';
-    wrapper.append(this.canvas);
-
     this.overlay = svgEl('svg', { class: 'edit-overlay' });
     this.overlay.setAttribute('aria-hidden', 'true');
     this.shade = svgEl('path', { class: 'edit-shade', 'fill-rule': 'evenodd' });
@@ -138,22 +123,22 @@ export class CropRotateView {
 
     this.loupes = new LoupeCluster();
 
-    this.stage = document.createElement('div');
-    this.stage.className = 'edit-stage';
-    this.stage.append(wrapper, this.overlay, this.loupes.element);
-    this.gesture = new ZoomGesture({
-      stage: this.stage,
-      wrapper,
+    // The image turned by the base angle and letterboxed; the frame's
+    // bounding box may stick out of the image, so the zoom keeps both on the stage.
+    this.stage = new ZoomStage({
+      stageClass: 'edit-stage',
+      canvasClass: 'edit-canvas',
+      fitted: (viewW, viewH) => this.fitted(viewW, viewH),
+      content: (fitted) => this.content(fitted),
       oneFingerPan: (at) => this.mode === 'crop' && this.handleAt(at) === null,
-      bounds: () => this.zoomBounds(),
       onGestureStart: () => this.cancelDrag(),
-      onChange: () => this.onZoomChange(),
-      onSettle: () => this.layout(),
+      onChange: () => this.renderOverlay(),
+      onLayout: () => this.onLayout(),
+      onPointerDown: (event) => this.onPointerDown(event),
+      onPointerMove: (event) => this.onPointerMove(event),
+      onPointerEnd: (event) => this.onPointerEnd(event),
     });
-    this.stage.addEventListener('pointerdown', (event) => this.onPointerDown(event));
-    this.stage.addEventListener('pointermove', (event) => this.onPointerMove(event));
-    this.stage.addEventListener('pointerup', (event) => this.onPointerEnd(event));
-    this.stage.addEventListener('pointercancel', (event) => this.onPointerEnd(event));
+    this.stage.element.append(this.overlay, this.loupes.element);
 
     const back = iconButton(icons.arrowLeft, 'Zurück', 'compact');
     back.addEventListener('click', () => this.cancel());
@@ -186,11 +171,8 @@ export class CropRotateView {
 
     this.element = document.createElement('section');
     this.element.className = 'screen screen-edit';
-    this.element.append(this.stage, bar);
+    this.element.append(this.stage.element, bar);
     this.element.hidden = true;
-
-    this.resizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(() => this.layout()) : null;
-    this.resizeObserver?.observe(this.stage);
   }
 
   /** Shows the capture with a fresh pending copy of its frame, in crop mode. */
@@ -199,17 +181,14 @@ export class CropRotateView {
     this.pending = { ...capture.frame };
     this.mode = 'crop';
     this.drag = null;
-    this.drawnBase = null;
-    this.drawnZoom = null;
-    this.gesture.reset();
     this.element.hidden = false;
     this.renderMode();
-    this.layout();
+    this.stage.show(capture.image);
   }
 
   /** The zoom state, for tests. */
   get zoom(): ZoomState {
-    return this.gesture.state;
+    return this.stage.zoom;
   }
 
   /** Hides the view and drops the display copy. Never touches the capture. */
@@ -218,17 +197,14 @@ export class CropRotateView {
     this.capture = null;
     this.pending = null;
     this.drag = null;
-    this.drawnBase = null;
-    this.drawnZoom = null;
-    this.gesture.reset();
-    releaseCanvas(this.canvas);
+    this.stage.clear();
     this.loupes.release();
   }
 
-  /** Releases what outlives `close`: the resize observer and the loupe canvases. */
+  /** Releases what outlives `close`: the stage's resize observer. */
   dispose(): void {
     this.close();
-    this.resizeObserver?.disconnect();
+    this.stage.dispose();
   }
 
   // ---- buttons ---------------------------------------------------------
@@ -244,7 +220,7 @@ export class CropRotateView {
     if (!this.pending || this.drag) return;
     this.pending = rotate90Right(this.pending);
     // The base rotation changes: back to the fitted view.
-    this.gesture.reset();
+    this.stage.gesture.reset();
     this.layout();
   }
 
@@ -286,61 +262,40 @@ export class CropRotateView {
     for (const mode of MODES) {
       this.modeButtons[mode].setAttribute('aria-checked', String(mode === this.mode));
     }
-    this.stage.dataset.mode = this.mode;
+    this.stage.element.dataset.mode = this.mode;
   }
 
   // ---- display ---------------------------------------------------------
 
-  /**
-   * Recomputes the fitted and composed transforms for the current stage
-   * size, base angle and zoom (re-clamped), then redraws.
-   */
+  /** Relays out the stage (fitted transform, zoom, redraw) and the overlay with it. */
   layout(): void {
+    if (!this.capture || !this.pending || this.element.hidden) return;
+    this.stage.layout();
+  }
+
+  /** The composed display transform `zoom ∘ fitted` (image pixel -> CSS pixel). */
+  private get transform(): Affine {
+    return this.stage.transform;
+  }
+
+  /** The fitted view: the image turned by the pending frame's base angle and letterboxed. */
+  private fitted(viewW: number, viewH: number): Affine | null {
     const capture = this.capture;
     const pending = this.pending;
-    if (!capture || !pending || this.element.hidden) return;
-    const viewW = this.stage.clientWidth;
-    const viewH = this.stage.clientHeight;
-    if (viewW === 0 || viewH === 0) return;
-    const base = baseAngle(pending.angle);
+    if (!capture || !pending) return null;
     const { image } = capture;
-    this.fitted = viewTransform(image.width, image.height, base, viewW, viewH);
-    this.gesture.clamp();
-    this.transform = composeZoom(this.gesture.state, this.fitted);
-    this.overlay.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
-    this.drawImage(viewW, viewH, base);
-    this.renderOverlay();
+    return viewTransform(image.width, image.height, baseAngle(pending.angle), viewW, viewH);
   }
-
-  /** Draws the visible part of the image through the composed transform; skipped when nothing changed. */
-  private drawImage(viewW: number, viewH: number, base: number): void {
-    const capture = this.capture;
-    if (!capture) return;
-    const dpr = displayDpr();
-    const zoom = this.gesture.state;
-    const resized = sizeDisplayCanvas(this.canvas, viewW, viewH, dpr);
-    const unchanged =
-      !resized && this.drawnBase === base && this.drawnZoom !== null && sameZoom(this.drawnZoom, zoom);
-    if (unchanged) return;
-    const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
-    drawImageThrough(ctx, capture.image, this.transform, viewW, viewH, dpr);
-    this.drawnBase = base;
-    this.drawnZoom = { ...zoom };
-    this.gesture.drawn();
-  }
-
-  // ---- zoom ------------------------------------------------------------
 
   /**
    * What the zoom must keep on the stage: the image and the frame's bounding
    * box (the frame may stick out of the image after rotation), in fitted
-   * CSS pixels; and the largest useful scale.
+   * CSS pixels.
    */
-  private zoomBounds(): { content: Rect; maxScale: number } | null {
+  private content(fitted: Affine): Rect {
     const capture = this.capture;
     const pending = this.pending;
-    if (!capture || !pending) return null;
+    if (!capture || !pending) return { x: 0, y: 0, width: 0, height: 0 };
     const { width, height } = capture.image;
     const points = [
       { x: 0, y: 0 },
@@ -348,13 +303,14 @@ export class CropRotateView {
       { x: width, y: height },
       { x: 0, y: height },
       ...quadCorners(pending),
-    ].map((p) => applyAffine(this.fitted, p));
-    return { content: boundsOf(points), maxScale: maxZoomScale(affineScale(this.fitted), displayDpr()) };
+    ].map((p) => applyAffine(fitted, p));
+    return boundsOf(points);
   }
 
-  /** Live update during a pinch: only the overlay is recomputed; the canvas moves by CSS. */
-  private onZoomChange(): void {
-    this.transform = composeZoom(this.gesture.state, this.fitted);
+  /** The stage laid out: the overlay follows the stage size and the composed transform. */
+  private onLayout(): void {
+    const { clientWidth, clientHeight } = this.stage.element;
+    this.overlay.setAttribute('viewBox', `0 0 ${clientWidth} ${clientHeight}`);
     this.renderOverlay();
   }
 
@@ -426,7 +382,7 @@ export class CropRotateView {
   // ---- pointer input ---------------------------------------------------
 
   private viewPoint(event: PointerEvent): Point {
-    const rect = this.stage.getBoundingClientRect();
+    const rect = this.stage.element.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
 
@@ -438,8 +394,8 @@ export class CropRotateView {
     return hitHandle(pending, toFrameLocal(pending, image), HANDLE_HIT_RADIUS / affineScale(this.transform));
   }
 
+  /** A pointer the zoom did not take. */
   private onPointerDown(event: PointerEvent): void {
-    if (this.gesture.pointerDown(event)) return;
     const capture = this.capture;
     const pending = this.pending;
     if (!capture || !pending || this.drag || !event.isPrimary) return;
@@ -467,12 +423,11 @@ export class CropRotateView {
       }
     }
     this.beginLoupes(this.drag, view);
-    this.stage.setPointerCapture(event.pointerId);
+    this.stage.element.setPointerCapture(event.pointerId);
     event.preventDefault();
   }
 
   private onPointerMove(event: PointerEvent): void {
-    if (this.gesture.pointerMove(event)) return;
     const drag = this.drag;
     const capture = this.capture;
     const pending = this.pending;
@@ -517,13 +472,13 @@ export class CropRotateView {
   }
 
   private onPointerEnd(event: PointerEvent): void {
-    if (this.gesture.pointerEnd(event)) return;
     if (!this.drag || !event.isPrimary) return;
     this.drag = null;
     this.renderArc();
     this.loupes.hide();
-    if (this.stage.hasPointerCapture(event.pointerId)) {
-      this.stage.releasePointerCapture(event.pointerId);
+    const stage = this.stage.element;
+    if (stage.hasPointerCapture(event.pointerId)) {
+      stage.releasePointerCapture(event.pointerId);
     }
   }
 
@@ -534,8 +489,8 @@ export class CropRotateView {
     const kind = drag.kind === 'resize' ? drag.handle : drag.kind === 'shear' ? drag.corner : drag.kind;
     this.loupes.begin(
       kind,
-      this.stage.clientWidth,
-      this.stage.clientHeight,
+      this.stage.element.clientWidth,
+      this.stage.element.clientHeight,
       startView,
       affineScale(this.transform),
       this.loupeScale(),
@@ -551,7 +506,7 @@ export class CropRotateView {
 
   /** CSS pixels per image pixel inside a loupe: three times the fitted view scale, capped. */
   private loupeScale(): number {
-    return loupeScale(affineScale(this.fitted), displayDpr());
+    return loupeScale(affineScale(this.stage.fitted), displayDpr());
   }
 
   /** Test hook: the CSS-pixel bounds of the visible cluster, or null. */

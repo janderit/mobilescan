@@ -155,12 +155,14 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   page header is the second text exception. Soft limit `MAX_PAGES`. Page switches push no history
   entry.
 - **Zoom is view state only.** Pinch, one-finger pan and double tap on the captured, crop/rotate and
-  tone stages (`src/zoom.ts`, `src/zoom-gesture.ts`, `src/frame-stage.ts`) compose a similarity on
-  top of the fitted transform; it is never stored, baked or shared, scale 1 is always the fitted
-  view, and it resets on every entry to a view, on 90° and on every new capture in the stage. The
-  views hand pointer events to the gesture first; handles keep priority over the pan, rotate mode
-  keeps one finger for rotation, a second finger cancels a drag without moving the pending frame,
-  and page swipes work only in the fitted view. The stage canvas has the stage size in device
+  tone stages (`src/zoom.ts`, `src/zoom-gesture.ts`, `src/zoom-stage.ts`, `src/frame-stage.ts`)
+  compose a similarity on top of the fitted transform; it is never stored, baked or shared, scale 1
+  is always the fitted view, and it resets on every entry to a view, on 90° and on every new capture
+  in the stage. `ZoomStage` owns the canvas, the gesture and the redraw for all three views (the
+  captured and tone views through `FrameStage`, which fits the frame region; the crop/rotate view
+  fits the whole image at its base angle) and hands pointer events to the gesture first; handles
+  keep priority over the pan, rotate mode keeps one finger for rotation, a second finger cancels a
+  drag without moving the pending frame, and page swipes work only in the fitted view. The stage canvas has the stage size in device
   pixels (`MAX_DPR`) and draws only the visible source rectangle, so memory does not grow with the
   zoom.
 - **History and back.** Every screen change pushes a history entry and `popstate` acts as the

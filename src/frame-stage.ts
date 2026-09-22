@@ -1,20 +1,16 @@
 /**
- * The zoomable stage of the captured view and the brightness/contrast view:
- * the frame region of a capture letterboxed into the stage, drawn
- * from the full-resolution image through the composed transform, with a
- * pinch/pan/double-tap zoom in front of it. One finger pans while zoomed in;
- * in the fitted view one-finger pointers are handed to the owner (the page
- * swipe of the captured view).
- *
- * The canvas has the stage's size in device pixels and shows only the
- * visible part of the image, so memory does not grow with the zoom level.
+ * The stage of the captured view and the brightness/contrast view: the frame
+ * region of a capture letterboxed into a `ZoomStage` (`zoom-stage.ts`), which
+ * owns the canvas, the pinch/pan/double-tap zoom and the redraw. One finger
+ * pans while zoomed in; in the fitted view one-finger pointers are handed to
+ * the owner (the page swipe of the captured view).
  */
 
 import type { Capture } from './model';
-import { affineScale, applyAffine, boundsOf, frameSourceRect, type Rect } from './geometry';
-import { displayDpr, drawImageThrough, releaseCanvas, sizeDisplayCanvas } from './canvas';
-import { ZoomGesture } from './zoom-gesture';
-import { composeZoom, fitRectTransform, maxZoomScale, type ZoomState } from './zoom';
+import { applyAffine, boundsOf, frameSourceRect, type Affine, type Rect } from './geometry';
+import type { ZoomGesture } from './zoom-gesture';
+import { fitRectTransform, type ZoomState } from './zoom';
+import { ZoomStage } from './zoom-stage';
 
 export interface FrameStageCallbacks {
   /** A one-finger pointer in the fitted view (not taken by the zoom). */
@@ -29,135 +25,74 @@ export class FrameStage {
   readonly canvas: HTMLCanvasElement;
   readonly gesture: ZoomGesture;
 
+  private readonly stage: ZoomStage;
   private capture: Capture | null = null;
-  private drawn: { width: number; height: number; capture: Capture; zoom: ZoomState } | null = null;
-  private observer: ResizeObserver | null = null;
 
-  constructor(
-    canvasClass: string,
-    private readonly callbacks: FrameStageCallbacks = {},
-  ) {
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = canvasClass;
-    const wrapper = document.createElement('div');
-    wrapper.className = 'zoom-wrapper';
-    wrapper.append(this.canvas);
-    this.element = document.createElement('div');
-    this.element.className = 'captured-stage';
-    this.element.append(wrapper);
-
-    this.gesture = new ZoomGesture({
-      stage: this.element,
-      wrapper,
-      oneFingerPan: () => true,
-      bounds: () => this.bounds(),
-      onGestureStart: () => this.callbacks.onGestureStart?.(),
-      onChange: () => {},
-      onSettle: () => this.layout(),
+  constructor(canvasClass: string, callbacks: FrameStageCallbacks = {}) {
+    this.stage = new ZoomStage({
+      stageClass: 'captured-stage',
+      canvasClass,
+      fitted: (viewW, viewH) => this.fitted(viewW, viewH),
+      content: (fitted) => this.content(fitted),
+      clip: () => (this.capture ? frameSourceRect(this.capture.frame) : undefined),
+      onGestureStart: () => callbacks.onGestureStart?.(),
+      onPointerDown: (event) => callbacks.onPointerDown?.(event),
+      onPointerEnd: (event) => callbacks.onPointerEnd?.(event),
     });
-
-    this.element.addEventListener('pointerdown', (event) => {
-      if (this.gesture.pointerDown(event)) return;
-      this.callbacks.onPointerDown?.(event);
-    });
-    this.element.addEventListener('pointermove', (event) => {
-      this.gesture.pointerMove(event);
-    });
-    const end = (event: PointerEvent): void => {
-      if (this.gesture.pointerEnd(event)) return;
-      this.callbacks.onPointerEnd?.(event);
-    };
-    this.element.addEventListener('pointerup', end);
-    this.element.addEventListener('pointercancel', end);
-
-    if (typeof ResizeObserver === 'function') {
-      this.observer = new ResizeObserver(() => this.layout());
-      this.observer.observe(this.element);
-    }
+    this.element = this.stage.element;
+    this.canvas = this.stage.canvas;
+    this.gesture = this.stage.gesture;
   }
 
   /** Shows a capture in the fitted view (the zoom resets) and draws it if the stage has a size. */
   show(capture: Capture): void {
     this.capture = capture;
-    this.drawn = null;
-    this.gesture.reset();
-    this.layout();
+    this.stage.show(capture.image);
   }
 
   /** Drops the display copy and the zoom. */
   clear(): void {
     this.capture = null;
-    this.drawn = null;
-    this.gesture.reset();
-    releaseCanvas(this.canvas);
+    this.stage.clear();
   }
 
   /** Releases the stage for good: stops observing its size. */
   dispose(): void {
-    this.observer?.disconnect();
-    this.observer = null;
+    this.stage.dispose();
   }
 
   /** Back to the fitted view without changing the capture. */
   resetZoom(): void {
-    if (!this.gesture.zoomed && !this.gesture.active) return;
-    this.gesture.reset();
-    this.layout();
+    this.stage.resetZoom();
+  }
+
+  /** Draws the visible part of the frame region at the current zoom; cheap when nothing changed. */
+  layout(): void {
+    this.stage.layout();
   }
 
   /** The zoom state, for tests. */
   get zoom(): ZoomState {
-    return this.gesture.state;
+    return this.stage.zoom;
   }
 
-  private fitted(): ReturnType<typeof fitRectTransform> | null {
+  /** The frame region letterboxed into the stage. */
+  private fitted(viewW: number, viewH: number): Affine | null {
     const capture = this.capture;
-    const viewW = this.element.clientWidth;
-    const viewH = this.element.clientHeight;
-    if (!capture || viewW === 0 || viewH === 0) return null;
+    if (!capture) return null;
     return fitRectTransform(frameSourceRect(capture.frame), viewW, viewH);
   }
 
-  private bounds(): { content: Rect; maxScale: number } | null {
+  /** What the zoom must keep on the stage: the frame region in fitted CSS pixels. */
+  private content(fitted: Affine): Rect {
     const capture = this.capture;
-    const fitted = this.fitted();
-    if (!capture || !fitted) return null;
+    if (!capture) return { x: 0, y: 0, width: 0, height: 0 };
     const src = frameSourceRect(capture.frame);
-    const content = boundsOf(
+    return boundsOf(
       [
         { x: src.x, y: src.y },
         { x: src.x + src.width, y: src.y + src.height },
       ].map((p) => applyAffine(fitted, p)),
     );
-    return { content, maxScale: maxZoomScale(affineScale(fitted), displayDpr()) };
-  }
-
-  /** Draws the visible part of the frame region at the current zoom; cheap when nothing changed. */
-  layout(): void {
-    const capture = this.capture;
-    const fitted = this.fitted();
-    if (!capture || !fitted) return;
-    this.gesture.clamp();
-    const viewW = this.element.clientWidth;
-    const viewH = this.element.clientHeight;
-    const zoom = this.gesture.state;
-    const dpr = displayDpr();
-    const resized = sizeDisplayCanvas(this.canvas, viewW, viewH, dpr);
-    const d = this.drawn;
-    const unchanged =
-      !resized &&
-      d !== null &&
-      d.capture === capture &&
-      d.width === viewW &&
-      d.height === viewH &&
-      d.zoom.scale === zoom.scale &&
-      d.zoom.tx === zoom.tx &&
-      d.zoom.ty === zoom.ty;
-    if (unchanged) return;
-    const ctx = this.canvas.getContext('2d');
-    if (!ctx) return;
-    drawImageThrough(ctx, capture.image, composeZoom(zoom, fitted), viewW, viewH, dpr, frameSourceRect(capture.frame));
-    this.drawn = { width: viewW, height: viewH, capture, zoom: { ...zoom } };
-    this.gesture.drawn();
   }
 }
