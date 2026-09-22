@@ -32,6 +32,14 @@ ICON = {
     "warning": ("Error state", '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>'),
     "refresh": ("Retry", '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>'),
     "spinner": ("Busy indicator (rotates)", '<path d="M12 2a10 10 0 0 1 10 10" stroke-width="3"/>'),
+    # v0.5
+    "plus": ("Add another page", '<path d="M12 5v14M5 12h14"/>'),
+    "chevron-left": ("Previous page", '<path d="M15 18l-6-6 6-6"/>'),
+    "chevron-right": ("Next page", '<path d="M9 18l6-6-6-6"/>'),
+    # v0.7
+    "shear": ("Shear mode (independent corners)", '<path d="M5 7l14-4v18L5 17z"/><circle cx="5" cy="7" r="1.6" fill="currentColor"/><circle cx="19" cy="3" r="1.6" fill="currentColor"/><circle cx="19" cy="21" r="1.6" fill="currentColor"/><circle cx="5" cy="17" r="1.6" fill="currentColor"/>'),
+    # v0.8
+    "magic-wand": ("Auto-detect", '<path d="M3 21l11-11"/><path d="M14 10l-2-2 2-2 2 2z" fill="currentColor"/><path d="M17 3v4M15 5h4M20 12v3M18.5 13.5h3M9 2v2M8 3h2"/>'),
 }
 
 APP_ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
@@ -237,6 +245,141 @@ def camera_error():
             + btn("refresh", W/2, 460, r=36, fill="#1e40af", stroke="#1e40af", color="#ffffff", size=32)
             + btn("arrow-left", 48, 90, r=24, fill="#374151", stroke="#374151", color="#ffffff", size=24))
 
+# ---- v0.5 ------------------------------------------------------------------
+PRIMARY = dict(fill="#1e40af", stroke="#1e40af", color="#ffffff")
+
+def captured_v05(current=1, total=1):
+    """Captured view with the [+] button; header with page navigation when total > 1."""
+    fw = 350; fh = fw * 1.4142 * 0.9; fx = 20; fy = 110 if total > 1 else 70
+    body = (f'<rect x="{fx}" y="{fy}" width="{fw}" height="{fh}" fill="#6b7280"/>'
+            + f'<clipPath id="cap5"><rect x="{fx}" y="{fy}" width="{fw}" height="{fh}"/></clipPath>'
+            + f'<g clip-path="url(#cap5)">' + paper(fx + 20, fy + 30, 310, 440, rot=-4 if current == 1 else 3) + '</g>')
+    if total > 1:
+        prev_ok = current > 1; next_ok = current < total
+        body += (btn("chevron-left", 60, 72, r=22, color="#111827" if prev_ok else "#d1d5db", size=24)
+                 + f'<text x="{W/2}" y="79" text-anchor="middle" font-size="20" font-weight="600" fill="#111827">{current}/{total}</text>'
+                 + btn("chevron-right", 330, 72, r=22, color="#111827" if next_ok else "#d1d5db", size=24))
+    body += (btn("arrow-left", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
+             + btn("edit", 243, BAR) + btn("plus", 338, BAR))
+    return body
+
+# ---- v0.6 ------------------------------------------------------------------
+def loupe(cx, cy, corner, uid, r=48, paper_rot=-4, frame_rot=0, off=(7, 5)):
+    """Magnified frame corner: the frame corner sits at the loupe centre, the paper corner is off by `off`."""
+    sx = 1 if corner in ("nw", "sw") else -1
+    sy = 1 if corner in ("nw", "ne") else -1
+    L = 200
+    px = cx + off[0] * sx; py = cy + off[1] * sy
+    rx = px if sx > 0 else px - L; ry = py if sy > 0 else py - L
+    lines = "".join(f'<rect x="{rx + 14}" y="{ry + 14 + i * 13}" width="{L - 28}" height="4" rx="2" fill="#9ca3af"/>' for i in range(14))
+    return (f'<clipPath id="lp{uid}"><circle cx="{cx}" cy="{cy}" r="{r - 2}"/></clipPath>'
+            f'<g clip-path="url(#lp{uid})"><rect x="{cx - r}" y="{cy - r}" width="{2 * r}" height="{2 * r}" fill="#6b7280"/>'
+            f'<g transform="rotate({paper_rot} {px} {py})"><rect x="{rx}" y="{ry}" width="{L}" height="{L}" fill="#fdfdf7"/>{lines}</g>'
+            f'<g transform="rotate({frame_rot} {cx} {cy})"><path d="M{cx} {cy}h{sx * L}M{cx} {cy}v{sy * L}" fill="none" stroke="#facc15" stroke-width="3" stroke-dasharray="10 8"/></g>'
+            f'</g>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r + 1}" fill="none" stroke="#ffffff" stroke-width="5"/>'
+            f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#111827" stroke-width="3"/>')
+
+def finger(x, y):
+    return f'<circle cx="{x}" cy="{y}" r="16" fill="#ffffff" stroke="#111827" stroke-width="2" opacity="0.85"/>'
+
+def crop_bar(active=0, modes=("crop", "rotate")):
+    return (btn("arrow-left", 55, BAR) + segmented(150, BAR, list(modes), active, w=120)
+            + btn("rotate-90-right", 250, BAR) + btn("check", 335, BAR, **PRIMARY))
+
+STAGE_C = (W / 2, 330)
+
+def loupe_corner():
+    fb = (52, 92, 290, 420)
+    body = full_image(frame_handles=True, frame_box=fb) + finger(fb[0], fb[1])
+    body += loupe(STAGE_C[0], STAGE_C[1], "nw", "a")
+    return body + crop_bar(0)
+
+def loupes_edge():
+    fb = (52, 92, 290, 420)
+    body = full_image(frame_handles=True, frame_box=fb) + finger(fb[0] + fb[2] / 2, fb[1])
+    body += loupe(STAGE_C[0] - 54, STAGE_C[1], "nw", "a") + loupe(STAGE_C[0] + 54, STAGE_C[1], "ne", "b")
+    return body + crop_bar(0)
+
+def loupes_rotate():
+    body = full_image(frame_rot=-4)
+    body += ('<path d="M300 140 A 170 170 0 0 1 335 240" fill="none" stroke="#facc15" stroke-width="3" stroke-dasharray="4 6"/>'
+             + finger(335, 240))
+    cx, cy = STAGE_C
+    for (dx, dy, c, u) in ((-54, -54, "nw", "a"), (54, -54, "ne", "b"), (54, 54, "se", "c"), (-54, 54, "sw", "d")):
+        body += loupe(cx + dx, cy + dy, c, u, paper_rot=-4, frame_rot=-4, off=(3, 2))
+    return body + crop_bar(1)
+
+# ---- v0.7 ------------------------------------------------------------------
+def paper_quad(pts, bg="#fdfdf7", line="#9ca3af"):
+    """Paper photographed from an angle: a trapezoid with text lines that follow the edges."""
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = pts
+    out = [f'<polygon points="{x0},{y0} {x1},{y1} {x2},{y2} {x3},{y3}" fill="{bg}"/>']
+    for i in range(1, 12):
+        t = i / 12
+        lx0 = x0 + (x3 - x0) * t; ly0 = y0 + (y3 - y0) * t
+        lx1 = x1 + (x2 - x1) * t; ly1 = y1 + (y2 - y1) * t
+        f = 0.8 if i % 4 else 0.5
+        out.append(f'<line x1="{lx0 + (lx1 - lx0) * 0.08:.0f}" y1="{ly0 + (ly1 - ly0) * 0.08:.0f}" '
+                   f'x2="{lx0 + (lx1 - lx0) * (0.08 + f * 0.84):.0f}" y2="{ly0 + (ly1 - ly0) * (0.08 + f * 0.84):.0f}" '
+                   f'stroke="{line}" stroke-width="4" stroke-linecap="round"/>')
+    return "".join(out)
+
+def quad_frame(pts, color="#facc15", handles=True):
+    out = [f'<polygon points="{" ".join(f"{x},{y}" for x, y in pts)}" fill="none" stroke="{color}" stroke-width="3" stroke-dasharray="10 8"/>']
+    if handles:
+        for x, y in pts:
+            out.append(f'<circle cx="{x}" cy="{y}" r="9" fill="{color}" stroke="#111827" stroke-width="1.5"/>')
+    return "".join(out)
+
+def compact_bar(items):
+    """items: list of (icon, x, active) for r=24 compact buttons, or ('seg', x, (icons, active))."""
+    out = []
+    for icon, x, extra in items:
+        if icon == "seg":
+            icons_, active = extra
+            out.append(segmented(x, BAR, icons_, active, w=130, h=44))
+        elif icon == "check":
+            out.append(btn("check", x, BAR, r=24, size=22, **PRIMARY))
+        elif extra:
+            out.append(btn(icon, x, BAR, r=24, size=22, **PRIMARY))
+        else:
+            out.append(btn(icon, x, BAR, r=24, size=22))
+    return "".join(out)
+
+PAPER_QUAD = [(95, 110), (300, 135), (325, 505), (60, 480)]
+
+def shear():
+    iw = 350; ih = iw * 4 / 3; ix = 20; iy = 60
+    body = (f'<rect x="{ix}" y="{iy}" width="{iw}" height="{ih}" fill="#6b7280"/>'
+            + f'<clipPath id="img7"><rect x="{ix}" y="{iy}" width="{iw}" height="{ih}"/></clipPath>'
+            + f'<g clip-path="url(#img7)">' + paper_quad(PAPER_QUAD) + '</g>'
+            + quad_frame(PAPER_QUAD))
+    body += compact_bar([("arrow-left", 40, False), ("seg", 150, (["crop", "rotate", "shear"], 2)),
+                         ("rotate-90-right", 262, False), ("check", 345, True)])
+    return body
+
+# ---- v0.8 ------------------------------------------------------------------
+def auto_crop():
+    # after [auto]: the frame sits on the (slightly rotated) paper edges
+    iw = 350; ih = iw * 4 / 3; ix = 20; iy = 60
+    body = full_image(frame_box=(ix + 35, iy + 45, iw - 70, ih - 90), frame_rot=-4, frame_handles=True)
+    body += compact_bar([("arrow-left", 34, False), ("seg", 128, (["crop", "rotate", "shear"], 0)),
+                         ("rotate-90-right", 218, False), ("magic-wand", 274, False), ("check", 350, True)])
+    return body
+
+def auto_tone():
+    fw = 350; fh = 470; fx = 20; fy = 60
+    body = (f'<rect x="{fx}" y="{fy}" width="{fw}" height="{fh}" fill="#6b7280"/>'
+            + f'<clipPath id="bc8"><rect x="{fx}" y="{fy}" width="{fw}" height="{fh}"/></clipPath>'
+            + f'<g clip-path="url(#bc8)" filter="grayscale(1) brightness(1.05) contrast(2.6)">'
+            + paper(40, 90, 310, 440, rot=-4, bg="#e8e2d2", line="#4b5563") + '</g>')
+    # contrast selected, value 2.6 on the piecewise-linear slider: 0.5 + 0.5 * (2.6 - 1) / 3
+    body += slider(50, 620, 290, 0.5 + 0.5 * (2.6 - 1) / 3, "contrast")
+    body += compact_bar([("arrow-left", 34, False), ("seg", 128, (["brightness", "contrast", "temperature"], 1)),
+                         ("grayscale", 218, True), ("magic-wand", 274, False), ("check", 350, True)])
+    return body
+
 SCREENS = [
     ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app."),
     ("v0.1-02-camera", "v0.1 Camera with DIN frame", camera(), "#374151", "Camera: dashed DIN A frame at 90 % width, shutter below."),
@@ -252,6 +395,14 @@ SCREENS = [
     ("v0.3-03-temperature", "v0.3 Colour temperature", bc(2), "#ffffff", "Temperature: cool .. warm, neutral in the middle."),
     ("v0.3-04-grayscale", "v0.3 Grayscale toggle", bc(0, gray=True), "#ffffff", "Grayscale toggle on: colour dropped, values still apply."),
     ("v0.4-01-camera-error", "v0.4 Camera unavailable", camera_error(), "#111827", "Camera unavailable: icon-only error, retry, back."),
+    ("v0.5-01-captured-plus", "v0.5 Captured view with [+]", captured_v05(1, 1), "#ffffff", "One page: no header. [back] [share] [edit] [+]"),
+    ("v0.5-02-page-2-of-2", "v0.5 Second of two pages", captured_v05(2, 2), "#ffffff", "Two pages: header [prev] 2/2 [next], next disabled."),
+    ("v0.6-01-loupe-corner", "v0.6 Loupe while dragging a corner", loupe_corner(), "#ffffff", "Corner drag: one loupe, frame corner at its centre."),
+    ("v0.6-02-loupes-edge", "v0.6 Loupes while dragging an edge", loupes_edge(), "#ffffff", "Edge drag: two loupes for the edge's corners."),
+    ("v0.6-03-loupes-rotate", "v0.6 Loupes during fine rotation", loupes_rotate(), "#ffffff", "Rotation: four loupes, frame lines turn, paper stays."),
+    ("v0.7-01-shear", "v0.7 Shear mode", shear(), "#ffffff", "Shear: four independent corners follow the trapezoid."),
+    ("v0.8-01-auto-crop", "v0.8 Auto-detected frame", auto_crop(), "#ffffff", "After [auto]: frame on the paper edges, wand left of confirm."),
+    ("v0.8-02-auto-tone", "v0.8 Auto black-and-white", auto_tone(), "#ffffff", "After [auto]: grayscale on, contrast raised, wand in the bar."),
 ]
 
 def main():

@@ -5,7 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project state
 
 v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast) and v0.4 (UI polish) are
-implemented; the roadmap is complete. The repository contains the product spec (`README.md`),
+implemented. A second roadmap is defined but not yet implemented: v0.5 (multi-page PDFs),
+v0.6 (loupe previews while dragging), v0.7 (shear / perspective correction) and v0.8
+(auto-detect for frame and tone); see `intent/v0.5-multi-page.md` .. `intent/v0.8-auto-detect.md`
+and the "v0.5 to v0.8 decisions" section of the decisions file. The repository contains the product spec (`README.md`),
 design intent documents with per-version definitions, icons and mockups (`intent/`), and the
 TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -42,7 +45,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.4-ui-polish.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.8-auto-detect.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -76,5 +79,6 @@ Crop/rotate view: [back] [crop|rotate] [rotate 90 right] [confirm]. Brightness/c
 
 ## Version roadmap
 
-v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish.
+v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
+v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect.
 Each version is independently deployable. Do not pull features from a later version into an earlier one.
