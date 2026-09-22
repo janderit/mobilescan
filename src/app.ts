@@ -8,31 +8,16 @@
  */
 
 import * as icons from './icons';
-import { MAX_PAGES, type Capture, type CompressionLevel, type Page } from './model';
-import { afterPaint, iconButton, prefersReducedMotion, svgEl } from './ui';
-import {
-  coverTransform,
-  frameToViewRect,
-  hasCornerOffsets,
-  initialFrame,
-  scaleFrame,
-  visibleImageRect,
-  type CoverTransform,
-  type Quad,
-} from './geometry';
-import type { Frame, Point } from './model';
+import type { CompressionLevel, Frame, Page } from './model';
+import { afterPaint, el, iconButton, prefersReducedMotion } from './ui';
+import { hasCornerOffsets, initialFrame, scaleFrame } from './geometry';
 import { COMPRESSION_LEVELS, DEFAULT_COMPRESSION } from './quality';
-import {
-  cameraErrorKind,
-  captureStill,
-  startCamera,
-  stopCamera,
-  type CameraErrorKind,
-  type CameraSession,
-} from './camera';
+import { cameraErrorKind, captureStill, startCamera, type CameraErrorKind, type CameraSession } from './camera';
 import { buildPdfFile, sharePdf } from './share';
 import type { UpdateChecker } from './update';
-import { applyCapture, asCapture, newPage, parkPage, releasePage, wakePage } from './pages';
+import { applyCapture, asCapture, newPage } from './pages';
+import { Scan } from './scan';
+import { CameraView, vibrate } from './camera-view';
 import { CropRotateView } from './editor';
 import { ToneView } from './tone-view';
 import { isNeutralTone, type Tone } from './tone';
@@ -41,9 +26,7 @@ import { BackTrap } from './navigation';
 import { swipeDirection } from './swipe';
 import { FrameStage } from './frame-stage';
 import type { ZoomState } from './zoom';
-import { detectFrameStrict, frameWorkingLayout, type TrackerState } from './detect';
-import { sampleImage } from './canvas';
-import { LiveDetector } from './live-detect';
+import { detectFrameIn, detectFrameStrict } from './detect';
 
 export type Screen = 'start' | 'camera' | 'error' | 'captured' | 'edit' | 'tone';
 
@@ -58,18 +41,13 @@ interface State {
   level: CompressionLevel;
   cameraError: CameraErrorKind;
   cameraOrigin: CameraOrigin;
-  /** v0.10: live document detection and auto-bake on capture; session state only. */
-  liveDetect: boolean;
 }
 
-/** Cross-fade between screens; must match `--fade` in styles.css. */
+/** Cross-fade between screens; written to `--fade` on the app root so styles.css follows it. */
 export const FADE_MS = 150;
 
 /** How long the icon-only error notice stays on screen. */
 export const NOTICE_MS = 2000;
-
-/** Vibration when the live outline turns green (the shutter uses 30 ms). */
-const FOUND_VIBRATION_MS = 15;
 
 const LEVEL_ICONS: Record<CompressionLevel, string> = {
   small: icons.fileSmall,
@@ -102,10 +80,6 @@ function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
   button.disabled = disabled;
 }
 
-function sameFrame(a: Frame, b: Frame): boolean {
-  return a.cx === b.cx && a.cy === b.cy && a.width === b.width && a.height === b.height && a.angle === b.angle;
-}
-
 /**
  * v0.10: the strict detection on the still, from the static frame. Null when
  * no document is found or the detection fails; the capture then keeps the
@@ -113,24 +87,11 @@ function sameFrame(a: Frame, b: Frame): boolean {
  */
 function detectStill(image: HTMLCanvasElement, frame: Frame): Frame | null {
   try {
-    const layout = frameWorkingLayout(frame);
-    const working = sampleImage(image, layout.transform, layout.width, layout.height);
-    return detectFrameStrict(working, layout, frame, image.width);
+    return detectFrameIn(image, frame, image.width, detectFrameStrict);
   } catch (error) {
     console.error('Erkennung fehlgeschlagen', error);
     return null;
   }
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className: string,
-  ...children: (Node | string)[]
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  node.className = className;
-  node.append(...children);
-  return node;
 }
 
 export interface AppOptions {
@@ -153,21 +114,10 @@ export class App {
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
     cameraOrigin: 'start',
-    liveDetect: true,
   };
 
-  /** Pages in capture order; empty outside a scan. */
-  private readonly pages: Page[] = [];
-  /** Index of the page on screen. */
-  private current = 0;
-  private session: CameraSession | null = null;
-  /** Frame shown over the live video, in track pixel coordinates. */
-  private liveFrame: Frame | null = null;
-  /** Track pixels -> viewport pixels of the camera screen. */
-  private cover: CoverTransform | null = null;
-  /** Live detection (v0.10): the loop and its last state. */
-  private readonly liveDetector: LiveDetector;
-  private liveState: TrackerState = { found: false, corners: null };
+  /** The pages of the scan and which one is on screen. */
+  private readonly scan = new Scan();
 
   // Screens
   private readonly screens: Record<Screen, HTMLElement>;
@@ -175,13 +125,7 @@ export class App {
   private readonly leaveTimers = new Map<Screen, ReturnType<typeof setTimeout>>();
 
   // Camera
-  private readonly cameraScreen: HTMLElement;
-  private readonly video: HTMLVideoElement;
-  private readonly frameOverlay: SVGSVGElement;
-  private readonly frameShade: SVGPathElement;
-  private readonly framePolygon: SVGPolygonElement;
-  private readonly shutterButton: HTMLButtonElement;
-  private readonly detectButton: HTMLButtonElement;
+  private readonly cameraView: CameraView;
   private readonly flash: HTMLElement;
 
   // Camera error
@@ -229,6 +173,7 @@ export class App {
 
   constructor(root: HTMLElement, options: AppOptions) {
     this.updates = options.updates ?? null;
+    root.style.setProperty('--fade', `${FADE_MS}ms`);
 
     // Start
     const startButton = el('button', 'start-button', 'Dokument scannen');
@@ -251,35 +196,10 @@ export class App {
     );
 
     // Camera
-    this.video = document.createElement('video');
-    this.video.className = 'camera-video';
-    this.video.autoplay = true;
-    this.video.playsInline = true;
-    this.video.muted = true;
-    this.video.setAttribute('playsinline', '');
-    // The frame overlay: a shade with a hole and the dashed outline, which is
-    // the static DIN rectangle or, with a document found (v0.10), its corners.
-    this.frameOverlay = svgEl('svg', { class: 'camera-frame', 'aria-hidden': 'true' });
-    this.frameShade = svgEl('path', { class: 'camera-shade', 'fill-rule': 'evenodd' });
-    this.framePolygon = svgEl('polygon', { class: 'camera-outline' });
-    this.frameOverlay.append(this.frameShade, this.framePolygon);
-    this.frameOverlay.setAttribute('hidden', '');
-    const cameraBack = iconButton(icons.arrowLeft, 'Zurück', 'dark camera-back');
-    cameraBack.addEventListener('click', () => this.closeCamera());
-    this.shutterButton = iconButton(icons.shutter, 'Foto aufnehmen', 'camera-shutter');
-    this.shutterButton.addEventListener('click', () => void this.takePhoto());
-    this.detectButton = iconButton(icons.magicWand, 'Dokument automatisch erkennen', 'dark camera-detect');
-    this.detectButton.addEventListener('click', () => this.toggleLiveDetect());
-    this.cameraScreen = el(
-      'section',
-      'screen screen-camera',
-      this.video,
-      this.frameOverlay,
-      cameraBack,
-      this.shutterButton,
-      this.detectButton,
-    );
-    this.liveDetector = new LiveDetector(this.video, { onResult: (state) => this.onLiveResult(state) });
+    this.cameraView = new CameraView({
+      onBack: () => this.closeCamera(),
+      onShutter: () => void this.takePhoto(),
+    });
 
     // Camera error: warning, retry, back. No text.
     this.errorStatus = el('div', 'error-icon');
@@ -314,9 +234,9 @@ export class App {
 
     // Page header: [previous] "n/m" [next], only with two or more pages.
     this.previousButton = iconButton(icons.chevronLeft, 'Vorherige Seite', 'compact page-arrow');
-    this.previousButton.addEventListener('click', () => void this.showPage(this.current - 1));
+    this.previousButton.addEventListener('click', () => void this.showPage(this.scan.currentIndex - 1));
     this.nextButton = iconButton(icons.chevronRight, 'Nächste Seite', 'compact page-arrow');
-    this.nextButton.addEventListener('click', () => void this.showPage(this.current + 1));
+    this.nextButton.addEventListener('click', () => void this.showPage(this.scan.currentIndex + 1));
     this.pagePosition = el('span', 'page-position');
     this.pagePosition.setAttribute('aria-live', 'polite');
     this.pageHeader = el('div', 'page-header', this.previousButton, this.pagePosition, this.nextButton);
@@ -419,7 +339,7 @@ export class App {
 
     this.screens = {
       start: startScreen,
-      camera: this.cameraScreen,
+      camera: this.cameraView.element,
       error: errorScreen,
       captured: capturedScreen,
       edit: this.editor.element,
@@ -431,7 +351,7 @@ export class App {
 
     root.append(
       startScreen,
-      this.cameraScreen,
+      this.cameraView.element,
       errorScreen,
       capturedScreen,
       this.editor.element,
@@ -442,13 +362,6 @@ export class App {
     );
 
     const { signal } = this.listeners;
-    const relayout = (): void => this.layoutFrame();
-    window.addEventListener('resize', relayout, { signal });
-    window.addEventListener('orientationchange', relayout, { signal });
-    if (typeof ResizeObserver === 'function') {
-      new ResizeObserver(relayout).observe(this.cameraScreen);
-    }
-
     // Lifecycle: the camera stream does not survive backgrounding on iOS.
     document.addEventListener('visibilitychange', () => this.onVisibilityChange(), { signal });
     window.addEventListener('pagehide', () => this.discardEverything(), { signal });
@@ -469,22 +382,22 @@ export class App {
 
   /** Number of pages in the scan, for tests. */
   get pageCount(): number {
-    return this.pages.length;
+    return this.scan.count;
   }
 
   /** Index of the page on screen, for tests. */
   get currentIndex(): number {
-    return this.current;
+    return this.scan.currentIndex;
   }
 
   /** Pages holding a full-resolution canvas; must never exceed one (tests). */
   get liveCanvasCount(): number {
-    return this.pages.filter((page) => page.image !== null).length;
+    return this.scan.liveCanvasCount;
   }
 
   /** Read-only view of the pages, for tests. */
   get pageList(): readonly Page[] {
-    return this.pages;
+    return this.scan.list;
   }
 
   /** Zoom state of the captured view, for tests. */
@@ -496,6 +409,8 @@ export class App {
   dispose(): void {
     this.discardEverything();
     this.listeners.abort();
+    this.cameraView.dispose();
+    this.capturedStage.dispose();
     for (const timer of this.leaveTimers.values()) clearTimeout(timer);
     this.leaveTimers.clear();
     if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
@@ -517,12 +432,11 @@ export class App {
     this.editButton.classList.toggle('primary', menuOpen);
     this.busyOverlay.hidden = !busy;
     this.errorStatus.setAttribute('aria-label', CAMERA_ERROR_LABELS[cameraError]);
-    this.detectButton.setAttribute('aria-pressed', String(this.state.liveDetect));
     for (const l of COMPRESSION_LEVELS) {
       this.levelButtons[l].setAttribute('aria-checked', String(l === level));
     }
     this.renderPageHeader();
-    if (screen === 'camera') this.layoutFrame();
+    if (screen === 'camera') this.cameraView.layout();
     if (screen === 'captured') this.capturedStage.layout();
     this.backTrap.setActive(screen !== 'start');
   }
@@ -558,112 +472,20 @@ export class App {
     this.leaveTimers.set(from, timer);
   }
 
-  /**
-   * Computes the static DIN frame over the video (track pixels) and the cover
-   * transform to the viewport, draws the overlay and keeps the live detection
-   * in step with the frame.
-   */
-  private layoutFrame(): void {
-    const session = this.session;
-    if (!session || this.state.screen !== 'camera') {
-      this.frameOverlay.setAttribute('hidden', '');
-      return;
-    }
-    const viewW = this.cameraScreen.clientWidth;
-    const viewH = this.cameraScreen.clientHeight;
-    if (viewW === 0 || viewH === 0) return;
-    // Fit the frame into the part of the video the screen shows (object-fit: cover
-    // crops the sides on tall phones), so the dashes are always fully visible.
-    const visible = visibleImageRect(session.width, session.height, viewW, viewH);
-    const frame = initialFrame(session.width, session.height, visible);
-    const changed = !this.liveFrame || !sameFrame(this.liveFrame, frame);
-    this.liveFrame = frame;
-    this.cover = coverTransform(session.width, session.height, viewW, viewH);
-    this.frameOverlay.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
-    this.frameOverlay.removeAttribute('hidden');
-    this.syncLiveDetector(changed);
-    this.renderCameraFrame();
-  }
-
-  /** Draws the shade and the outline: the detected corners while found, else the static frame. */
-  private renderCameraFrame(): void {
-    const frame = this.liveFrame;
-    const cover = this.cover;
-    if (!frame || !cover) return;
-    const toView = (p: Point): Point => ({ x: p.x * cover.scale + cover.offsetX, y: p.y * cover.scale + cover.offsetY });
-    const found = this.state.liveDetect && this.liveState.found && this.liveState.corners !== null;
-    let points: Point[];
-    if (found) {
-      points = (this.liveState.corners as Quad).map(toView);
-    } else {
-      const rect = frameToViewRect(frame, cover);
-      points = [
-        { x: rect.x, y: rect.y },
-        { x: rect.x + rect.width, y: rect.y },
-        { x: rect.x + rect.width, y: rect.y + rect.height },
-        { x: rect.x, y: rect.y + rect.height },
-      ];
-    }
-    const viewW = this.cameraScreen.clientWidth;
-    const viewH = this.cameraScreen.clientHeight;
-    const inner = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-    this.framePolygon.setAttribute('points', inner);
-    const outer = `M0 0H${viewW}V${viewH}H0Z`;
-    const hole = `M${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('L')}Z`;
-    this.frameShade.setAttribute('d', outer + hole);
-    this.frameOverlay.classList.toggle('found', found);
-  }
-
-  /** Starts, restarts or stops the live detection to match the screen, the toggle and the frame. */
-  private syncLiveDetector(frameChanged: boolean): void {
-    const wanted = this.session !== null && this.state.screen === 'camera' && this.state.liveDetect && this.liveFrame !== null;
-    if (!wanted) {
-      this.liveDetector.stop();
-      this.liveState = { found: false, corners: null };
-      return;
-    }
-    if (frameChanged || !this.liveDetector.running) {
-      this.liveState = { found: false, corners: null };
-      this.liveDetector.start(this.liveFrame as Frame, (this.session as CameraSession).width);
-    }
-  }
-
-  private onLiveResult(state: TrackerState): void {
-    const wasFound = this.liveState.found;
-    this.liveState = state;
-    if (state.found && !wasFound) this.vibrate(FOUND_VIBRATION_MS);
-    this.renderCameraFrame();
-  }
-
-  private toggleLiveDetect(): void {
-    this.state.liveDetect = !this.state.liveDetect;
-    this.syncLiveDetector(false);
-    this.render();
-  }
-
   /** Page navigation above the image; hidden with a single page. */
   private renderPageHeader(): void {
-    const count = this.pages.length;
+    const count = this.scan.count;
+    const current = this.scan.currentIndex;
     this.pageHeader.hidden = count <= 1;
-    this.pagePosition.textContent = count > 0 ? `${this.current + 1}/${count}` : '';
-    setDisabled(this.previousButton, this.current <= 0);
-    setDisabled(this.nextButton, this.current >= count - 1);
-    setDisabled(this.addButton, count >= MAX_PAGES);
-  }
-
-  private currentPage(): Page | null {
-    return this.pages[this.current] ?? null;
-  }
-
-  /** The current page as a capture; null when it is parked or absent. */
-  private currentCapture(): Capture | null {
-    const page = this.currentPage();
-    return page?.image ? asCapture(page) : null;
+    this.pagePosition.textContent = count > 0 ? `${current + 1}/${count}` : '';
+    setDisabled(this.previousButton, current <= 0);
+    setDisabled(this.nextButton, current >= count - 1);
+    setDisabled(this.addButton, this.scan.isFull);
   }
 
   /** Shows the current page's frame region on the captured stage, fitted (the zoom resets). */
   private renderPreview(): void {
-    const capture = this.currentCapture();
+    const capture = this.scan.currentCapture();
     if (!capture) {
       this.capturedStage.clear();
       return;
@@ -723,8 +545,8 @@ export class App {
     }
     if (this.state.screen !== 'camera') return;
     if (document.visibilityState === 'hidden') {
-      this.stopSession();
-    } else if (!this.session) {
+      this.cameraView.close();
+    } else if (!this.cameraView.session) {
       void this.openCamera();
     }
   }
@@ -773,14 +595,15 @@ export class App {
   // ---- transitions -----------------------------------------------------
 
   private async openCamera(origin: CameraOrigin = 'start'): Promise<void> {
-    if (this.session) return;
+    if (this.cameraView.session) return;
     if (this.state.screen !== 'camera' && this.state.screen !== 'error') {
       this.state.cameraOrigin = origin;
     }
     this.state.screen = 'camera';
     this.render();
+    let session: CameraSession;
     try {
-      this.session = await startCamera(this.video);
+      session = await startCamera(this.cameraView.video);
     } catch (error) {
       console.error('Kamera nicht verfügbar', error);
       this.state.cameraError = cameraErrorKind(error);
@@ -790,17 +613,18 @@ export class App {
     }
     if (this.state.screen !== 'camera') {
       // Left the camera while it was starting.
-      this.stopSession();
+      this.cameraView.close();
       return;
     }
+    this.cameraView.open(session);
     this.render();
   }
 
   /** Camera back: to the start page, or back to the page shown before [+]. */
   private closeCamera(): void {
     if (this.state.busy) return;
-    this.stopSession();
-    if (this.state.cameraOrigin === 'captured' && this.pages.length > 0) {
+    this.cameraView.close();
+    if (this.state.cameraOrigin === 'captured' && this.scan.count > 0) {
       void this.returnToCaptured();
       return;
     }
@@ -811,9 +635,9 @@ export class App {
 
   /** Wakes the current page and shows the captured view. */
   private async returnToCaptured(): Promise<void> {
-    const page = this.currentPage();
+    const page = this.scan.currentPage();
     if (page && !page.image) {
-      await this.runBusyAsync(() => wakePage(page), 'Seite konnte nicht geladen werden');
+      await this.runBusyAsync(() => this.scan.wake(page), 'Seite konnte nicht geladen werden');
       if (!page.image) {
         // The page is lost; fall back to the start page rather than a blank view.
         this.discardPages();
@@ -830,7 +654,7 @@ export class App {
   }
 
   private async takePhoto(): Promise<void> {
-    const session = this.session;
+    const { session, liveFrame, liveDetect, liveFound } = this.cameraView;
     if (!session || this.state.busy) return;
     let image: HTMLCanvasElement;
     try {
@@ -841,19 +665,17 @@ export class App {
     }
     this.shutterFeedback();
     // The capture canvas may be downscaled (iOS pixel cap): scale the live frame with it.
-    const staticFrame = this.liveFrame
-      ? scaleFrame(this.liveFrame, image.width / session.width)
+    const staticFrame = liveFrame
+      ? scaleFrame(liveFrame, image.width / session.width)
       : initialFrame(image.width, image.height);
-    const liveFound = this.state.liveDetect && this.liveState.found;
-    this.stopSession();
+    this.cameraView.close();
     // v0.10: the still is detected once more from the static frame; the live
     // result is only feedback (the still is grabbed later than the last video frame).
-    const detected = this.state.liveDetect ? detectStill(image, staticFrame) : null;
+    const detected = liveDetect ? detectStill(image, staticFrame) : null;
     const frame = detected ?? staticFrame;
     // Appended after the last page; the previous current page was parked by [+].
     const page = newPage({ image, frame });
-    this.pages.push(page);
-    this.current = this.pages.length - 1;
+    this.scan.add(page);
     this.renderPreview();
     this.state.screen = 'captured';
     this.state.sheetOpen = false;
@@ -879,17 +701,7 @@ export class App {
     // Restart the animation even if the previous one is still running.
     void this.flash.offsetWidth;
     this.flash.classList.add('active');
-    this.vibrate(30);
-  }
-
-  /** Haptic feedback where supported; silent under reduced motion. */
-  private vibrate(ms: number): void {
-    if (prefersReducedMotion() || typeof navigator.vibrate !== 'function') return;
-    try {
-      navigator.vibrate(ms);
-    } catch {
-      // Not permitted; feedback is optional.
-    }
+    vibrate(30);
   }
 
   /**
@@ -900,26 +712,25 @@ export class App {
     if (this.state.busy) return;
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
-    if (this.pages.length <= 1) {
+    if (this.scan.count <= 1) {
       this.discardPages();
       await this.openCamera('start');
       return;
     }
-    const [removed] = this.pages.splice(this.current, 1);
-    if (removed) releasePage(removed);
-    this.capturedStage.clear();
     // The previous page, or the next one if the first page was removed.
-    await this.switchToPage(Math.max(0, this.current - 1));
+    const next = this.scan.removeCurrent();
+    this.capturedStage.clear();
+    await this.switchToPage(next);
   }
 
   /** [+]: park the current page and open the camera for the next one. */
   private async addPage(): Promise<void> {
-    if (this.state.busy || this.pages.length >= MAX_PAGES) return;
-    const page = this.currentPage();
+    if (this.state.busy || this.scan.isFull) return;
+    const page = this.scan.currentPage();
     if (!page) return;
     this.state.menuOpen = false;
     this.state.sheetOpen = false;
-    await this.runBusyAsync(() => parkPage(page), 'Seite konnte nicht abgelegt werden');
+    await this.runBusyAsync(() => this.scan.park(page), 'Seite konnte nicht abgelegt werden');
     if (page.image) return; // parking failed; stay on the page
     this.capturedStage.clear();
     await this.openCamera('captured');
@@ -927,10 +738,10 @@ export class App {
 
   /** Previous/next: park the page on screen, wake the target. Not a screen change. */
   private async showPage(index: number): Promise<void> {
-    if (this.state.busy || index < 0 || index >= this.pages.length || index === this.current) return;
-    const leaving = this.currentPage();
+    if (this.state.busy || index < 0 || index >= this.scan.count || index === this.scan.currentIndex) return;
+    const leaving = this.scan.currentPage();
     if (leaving) {
-      await this.runBusyAsync(() => parkPage(leaving), 'Seite konnte nicht abgelegt werden');
+      await this.runBusyAsync(() => this.scan.park(leaving), 'Seite konnte nicht abgelegt werden');
       if (leaving.image) return; // parking failed; stay
     }
     await this.switchToPage(index);
@@ -945,18 +756,17 @@ export class App {
     const start = this.swipeStart;
     if (!start || event.pointerId !== start.id) return;
     this.swipeStart = null;
-    if (this.state.busy || this.state.menuOpen || this.state.sheetOpen || this.pages.length < 2) return;
+    if (this.state.busy || this.state.menuOpen || this.state.sheetOpen || this.scan.count < 2) return;
     const direction = swipeDirection(event.clientX - start.x, event.clientY - start.y);
-    if (direction === 'left') void this.showPage(this.current + 1);
-    else if (direction === 'right') void this.showPage(this.current - 1);
+    if (direction === 'left') void this.showPage(this.scan.currentIndex + 1);
+    else if (direction === 'right') void this.showPage(this.scan.currentIndex - 1);
   }
 
   /** Makes a page current: wakes it if parked and redraws the preview. */
   private async switchToPage(index: number): Promise<void> {
-    this.current = index;
-    const page = this.currentPage();
+    const page = this.scan.switchTo(index);
     if (page && !page.image) {
-      await this.runBusyAsync(() => wakePage(page), 'Seite konnte nicht geladen werden');
+      await this.runBusyAsync(() => this.scan.wake(page), 'Seite konnte nicht geladen werden');
     }
     this.renderPreview();
     this.render();
@@ -984,7 +794,7 @@ export class App {
   }
 
   private openEditor(): void {
-    const capture = this.currentCapture();
+    const capture = this.scan.currentCapture();
     if (!capture) return;
     this.state.menuOpen = false;
     this.state.screen = 'edit';
@@ -1000,7 +810,7 @@ export class App {
    */
   private async closeEditor(frame: Frame | null): Promise<void> {
     if (this.state.busy || this.state.screen !== 'edit') return;
-    const page = this.currentPage();
+    const page = this.scan.currentPage();
     if (frame && page?.image) {
       await this.runBusy(() => {
         applyCapture(page, bakeFrame(asCapture(page), frame));
@@ -1012,7 +822,7 @@ export class App {
   }
 
   private openToneView(): void {
-    const capture = this.currentCapture();
+    const capture = this.scan.currentCapture();
     if (!capture) return;
     this.state.menuOpen = false;
     this.state.screen = 'tone';
@@ -1026,7 +836,7 @@ export class App {
    */
   private async closeToneView(tone: Tone | null): Promise<void> {
     if (this.state.busy || this.state.screen !== 'tone') return;
-    const page = this.currentPage();
+    const page = this.scan.currentPage();
     if (tone && page?.image) {
       await this.runBusy(() => {
         applyCapture(page, bakeTone(asCapture(page), tone));
@@ -1089,11 +899,11 @@ export class App {
   }
 
   private async confirmShare(): Promise<void> {
-    if (this.pages.length === 0 || this.state.busy) return;
+    if (this.scan.count === 0 || this.state.busy) return;
     this.state.busy = true;
     this.render();
     try {
-      const file = await buildPdfFile(this.pages, this.state.level);
+      const file = await buildPdfFile(this.scan.list, this.state.level);
       const outcome = await sharePdf(file);
       this.state.busy = false;
       this.state.sheetOpen = false;
@@ -1110,28 +920,14 @@ export class App {
 
   // ---- resources -------------------------------------------------------
 
-  private stopSession(): void {
-    this.liveDetector.stop();
-    this.liveState = { found: false, corners: null };
-    if (this.session) {
-      stopCamera(this.session);
-      this.session = null;
-    }
-    this.liveFrame = null;
-    this.cover = null;
-    this.frameOverlay.setAttribute('hidden', '');
-  }
-
   /** Drops every page of the scan; nothing is retained. */
   private discardPages(): void {
-    for (const page of this.pages) releasePage(page);
-    this.pages.length = 0;
-    this.current = 0;
+    this.scan.discard();
     this.capturedStage.clear();
   }
 
   private discardEverything(): void {
-    this.stopSession();
+    this.cameraView.close();
     this.editor.close();
     this.toneView.close();
     this.discardPages();
