@@ -335,6 +335,20 @@ describe('multi-page scans (v0.5)', () => {
     expect(root.querySelector<HTMLElement>('.sheet-backdrop')?.hidden).toBe(true);
   });
 
+  it('discards the scan and returns to the start page when a page cannot be woken', async () => {
+    await scanFirstPage();
+    await addPage();
+    // The parked page cannot be decoded any more.
+    vi.stubGlobal('createImageBitmap', () => Promise.reject(new Error('decode failed')));
+    button(root, 'Vorherige Seite').click();
+    await settle();
+    expect(app.screen).toBe('start');
+    expect(app.pageCount).toBe(0);
+    expect(app.liveCanvasCount).toBe(0);
+    expect(root.querySelector<HTMLElement>('.busy')?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>('.notice')?.hidden).toBe(false);
+  });
+
   it('disables [+] at the page limit', async () => {
     await scanFirstPage();
     for (let i = 1; i < MAX_PAGES; i += 1) {

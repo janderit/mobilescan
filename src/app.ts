@@ -10,14 +10,17 @@
 
 import * as icons from './icons';
 import type { CompressionLevel, Frame, Page } from './model';
-import { afterPaint, el, iconButton, prefersReducedMotion } from './ui';
+import { afterPaint, el, prefersReducedMotion } from './ui';
 import { hasCornerOffsets, initialFrame, scaleFrame } from './geometry';
 import { DEFAULT_COMPRESSION } from './quality';
 import { cameraErrorKind, captureStill, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
 import { buildPdfFile, sharePdf } from './share';
 import type { UpdateChecker } from './update';
+import { UpdatePrompt } from './update-prompt';
 import { applyCapture, asCapture, newPage } from './pages';
 import { Scan } from './scan';
+import { StartView } from './start-view';
+import { ErrorView } from './error-view';
 import { CameraView, vibrate } from './camera-view';
 import { CapturedView } from './captured-view';
 import { CropRotateView } from './editor';
@@ -50,11 +53,7 @@ export const FADE_MS = 150;
 /** How long the icon-only error notice stays on screen. */
 export const NOTICE_MS = 2000;
 
-export const CAMERA_ERROR_LABELS: Record<CameraErrorKind, string> = {
-  denied: 'Kamerazugriff verweigert',
-  unavailable: 'Keine Kamera verfügbar',
-  insecure: 'Kamera nur über eine sichere Verbindung verfügbar',
-};
+export { CAMERA_ERROR_LABELS } from './error-view';
 
 /**
  * v0.10: the strict detection on the still, from the static frame. Null when
@@ -78,9 +77,6 @@ export interface AppOptions {
   updates?: UpdateChecker;
 }
 
-/** Minimum time between two update checks, so returning to the start page repeatedly stays cheap. */
-const UPDATE_CHECK_INTERVAL_MS = 60_000;
-
 export class App {
   private readonly state: State = {
     screen: 'start',
@@ -100,6 +96,9 @@ export class App {
   private shownScreen: Screen = 'start';
   private readonly leaveTimers = new Map<Screen, ReturnType<typeof setTimeout>>();
 
+  // Start
+  private readonly startView: StartView;
+
   // Camera
   private readonly cameraView: CameraView;
   private readonly flash: HTMLElement;
@@ -107,7 +106,7 @@ export class App {
   private cameraStarting = false;
 
   // Camera error
-  private readonly errorStatus: HTMLElement;
+  private readonly errorView: ErrorView;
 
   // Captured
   private readonly capturedView: CapturedView;
@@ -127,38 +126,20 @@ export class App {
   private readonly backTrap: BackTrap;
 
   // Updates
-  private readonly updates: UpdateChecker | null;
-  private readonly updateButton: HTMLButtonElement;
-  private updateAvailable = false;
-  private updateChecking = false;
-  private lastUpdateCheck = Number.NEGATIVE_INFINITY;
+  private readonly updatePrompt: UpdatePrompt;
 
   /** Detaches the window/document listeners on dispose(). */
   private readonly listeners = new AbortController();
 
   constructor(root: HTMLElement, options: AppOptions) {
-    this.updates = options.updates ?? null;
+    this.updatePrompt = new UpdatePrompt(options.updates ?? null, () => this.render());
     root.style.setProperty('--fade', `${FADE_MS}ms`);
 
     // Start
-    const startButton = el('button', 'start-button', 'Dokument scannen');
-    startButton.type = 'button';
-    startButton.addEventListener('click', () => void this.openCamera());
-    // Update button: shown only when the server has a newer build. The slot
-    // keeps its height so the layout does not jump when the button appears.
-    this.updateButton = iconButton(icons.refresh, 'App aktualisieren', 'primary update-button');
-    this.updateButton.hidden = true;
-    this.updateButton.addEventListener('click', () => void this.applyUpdate());
-    // Version line: makes it visible on the phone whether a new build has arrived.
-    const version = el('p', 'app-version', `v${options.version} (${options.build})`);
-    const startScreen = el(
-      'section',
-      'screen screen-start',
-      el('h1', 'app-title', 'MobileScan'),
-      startButton,
-      el('div', 'update-slot', this.updateButton),
-      version,
-    );
+    this.startView = new StartView(options, {
+      onStart: () => void this.openCamera(),
+      onUpdate: () => void this.applyUpdate(),
+    });
 
     // Camera
     this.cameraView = new CameraView({
@@ -167,15 +148,10 @@ export class App {
     });
 
     // Camera error: warning, retry, back. No text.
-    this.errorStatus = el('div', 'error-icon');
-    this.errorStatus.innerHTML = icons.warning;
-    this.errorStatus.setAttribute('role', 'status');
-    this.errorStatus.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-    const errorBack = iconButton(icons.arrowLeft, 'Zurück', 'dark camera-back');
-    errorBack.addEventListener('click', () => this.closeCamera());
-    const retryButton = iconButton(icons.refresh, 'Kamera erneut versuchen', 'primary');
-    retryButton.addEventListener('click', () => void this.openCamera());
-    const errorScreen = el('section', 'screen screen-error', errorBack, this.errorStatus, retryButton);
+    this.errorView = new ErrorView({
+      onBack: () => this.closeCamera(),
+      onRetry: () => void this.openCamera(),
+    });
 
     // Captured
     this.capturedView = new CapturedView({
@@ -228,9 +204,9 @@ export class App {
     this.flash.addEventListener('animationend', () => this.flash.classList.remove('active'));
 
     this.screens = {
-      start: startScreen,
+      start: this.startView.element,
       camera: this.cameraView.element,
-      error: errorScreen,
+      error: this.errorView.element,
       captured: this.capturedView.element,
       edit: this.editor.element,
       tone: this.toneView.element,
@@ -240,9 +216,9 @@ export class App {
     }
 
     root.append(
-      startScreen,
+      this.startView.element,
       this.cameraView.element,
-      errorScreen,
+      this.errorView.element,
       this.capturedView.element,
       this.editor.element,
       this.toneView.element,
@@ -262,7 +238,7 @@ export class App {
     window.addEventListener('popstate', () => this.backTrap.handlePop(), { signal });
 
     this.render();
-    this.checkForUpdate();
+    this.updatePrompt.check();
   }
 
   /** Current screen, for tests. */
@@ -315,11 +291,10 @@ export class App {
     if (screen !== this.shownScreen) {
       this.switchScreen(this.shownScreen, screen);
       this.shownScreen = screen;
-      if (screen === 'start') this.checkForUpdate();
     }
-    this.updateButton.hidden = !this.updateAvailable;
+    this.startView.render({ updateAvailable: this.updatePrompt.available });
     this.busyOverlay.hidden = !busy;
-    this.errorStatus.setAttribute('aria-label', CAMERA_ERROR_LABELS[cameraError]);
+    this.errorView.render({ kind: cameraError });
     this.capturedView.render({
       active: screen === 'captured',
       count: this.scan.count,
@@ -364,6 +339,18 @@ export class App {
     this.leaveTimers.set(from, timer);
   }
 
+  /**
+   * Moves to a screen with the sheet and the popover closed. Arriving on the
+   * start page asks for an update.
+   */
+  private showScreen(screen: Screen): void {
+    this.state.screen = screen;
+    this.state.sheetOpen = false;
+    this.state.menuOpen = false;
+    this.render();
+    if (screen === 'start') this.updatePrompt.check();
+  }
+
   /** Shows the current page's frame region on the captured stage, fitted (the zoom resets). */
   private renderPreview(): void {
     const capture = this.scan.currentCapture();
@@ -384,8 +371,8 @@ export class App {
     }, NOTICE_MS);
   }
 
-  private fail(message: string, error: unknown): void {
-    console.error(message, error);
+  private fail(logLabel: string, error: unknown): void {
+    console.error(logLabel, error);
     this.showNotice();
   }
 
@@ -422,7 +409,7 @@ export class App {
 
   private onVisibilityChange(): void {
     if (document.visibilityState === 'visible' && this.state.screen === 'start') {
-      this.checkForUpdate();
+      this.updatePrompt.check();
     }
     if (this.state.screen !== 'camera') return;
     if (document.visibilityState === 'hidden') {
@@ -434,37 +421,13 @@ export class App {
 
   // ---- updates ---------------------------------------------------------
 
-  /**
-   * Asks the server for a newer build, at most once a minute and only while
-   * online (the checker treats offline and failures as "no update"). Once an
-   * update is known, the button stays until it is applied.
-   */
-  private checkForUpdate(): void {
-    if (!this.updates || this.updateAvailable || this.updateChecking) return;
-    const now = Date.now();
-    if (now - this.lastUpdateCheck < UPDATE_CHECK_INTERVAL_MS) return;
-    this.lastUpdateCheck = now;
-    this.updateChecking = true;
-    this.updates.check().then(
-      (available) => {
-        this.updateChecking = false;
-        if (!available) return;
-        this.updateAvailable = true;
-        this.render();
-      },
-      () => {
-        this.updateChecking = false;
-      },
-    );
-  }
-
   /** Activates the new build behind the busy overlay; the page reloads on success. */
   private async applyUpdate(): Promise<void> {
-    if (!this.updates || this.state.busy) return;
+    if (!this.updatePrompt.enabled || this.state.busy) return;
     this.state.busy = true;
     this.render();
     try {
-      await this.updates.apply();
+      await this.updatePrompt.apply();
     } catch (error) {
       console.error(error);
       this.state.busy = false;
@@ -518,28 +481,30 @@ export class App {
       return;
     }
     this.discardPages();
-    this.state.screen = 'start';
-    this.render();
+    this.showScreen('start');
   }
 
   /** Wakes the current page and shows the captured view. */
   private async returnToCaptured(): Promise<void> {
     const page = this.scan.currentPage();
-    if (page && !page.image) {
-      await this.runBusyAsync(() => this.scan.wake(page), 'Seite konnte nicht geladen werden');
-      if (!page.image) {
-        // The page is lost; fall back to the start page rather than a blank view.
-        this.discardPages();
-        this.state.screen = 'start';
-        this.render();
-        return;
-      }
-    }
+    if (page && !(await this.wakeOrLeave(page))) return;
     this.renderPreview();
-    this.state.screen = 'captured';
-    this.state.sheetOpen = false;
-    this.state.menuOpen = false;
-    this.render();
+    this.showScreen('captured');
+  }
+
+  /**
+   * Wakes a parked page behind the busy overlay. When it cannot be decoded
+   * the page is lost: the scan is discarded and the start page shown rather
+   * than a blank view. Returns whether the page holds a canvas.
+   */
+  private async wakeOrLeave(page: Page): Promise<boolean> {
+    if (!page.image) {
+      await this.runBusy(() => this.scan.wake(page), 'Seite konnte nicht geladen werden');
+    }
+    if (page.image) return true;
+    this.discardPages();
+    this.showScreen('start');
+    return false;
   }
 
   private async takePhoto(): Promise<void> {
@@ -566,10 +531,7 @@ export class App {
     const page = newPage({ image, frame: staticFrame });
     this.scan.add(page);
     this.renderPreview();
-    this.state.screen = 'captured';
-    this.state.sheetOpen = false;
-    this.state.menuOpen = false;
-    this.render();
+    this.showScreen('captured');
     if (detected) {
       // The bake hands back an upright frame; a failed bake leaves the page
       // with its image and the static frame.
@@ -618,7 +580,7 @@ export class App {
     if (!page) return;
     this.state.menuOpen = false;
     this.state.sheetOpen = false;
-    await this.runBusyAsync(() => this.scan.park(page), 'Seite konnte nicht abgelegt werden');
+    await this.runBusy(() => this.scan.park(page), 'Seite konnte nicht abgelegt werden');
     if (page.image) return; // parking failed; stay on the page
     this.capturedView.stage.clear();
     await this.openCamera('captured');
@@ -629,7 +591,7 @@ export class App {
     if (this.state.busy || index < 0 || index >= this.scan.count || index === this.scan.currentIndex) return;
     const leaving = this.scan.currentPage();
     if (leaving) {
-      await this.runBusyAsync(() => this.scan.park(leaving), 'Seite konnte nicht abgelegt werden');
+      await this.runBusy(() => this.scan.park(leaving), 'Seite konnte nicht abgelegt werden');
       if (leaving.image) return; // parking failed; stay
     }
     await this.switchToPage(index);
@@ -645,9 +607,7 @@ export class App {
   /** Makes a page current: wakes it if parked and redraws the preview. */
   private async switchToPage(index: number): Promise<void> {
     const page = this.scan.switchTo(index);
-    if (page && !page.image) {
-      await this.runBusyAsync(() => this.scan.wake(page), 'Seite konnte nicht geladen werden');
-    }
+    if (page && !(await this.wakeOrLeave(page))) return;
     this.renderPreview();
     this.render();
   }
@@ -697,8 +657,7 @@ export class App {
       }, hasCornerOffsets(frame) ? 'Entzerren fehlgeschlagen' : 'Drehen fehlgeschlagen', frameNeedsBake(frame));
       this.renderPreview();
     }
-    this.state.screen = 'captured';
-    this.render();
+    this.showScreen('captured');
   }
 
   private openToneView(): void {
@@ -723,22 +682,22 @@ export class App {
       }, 'Anpassen fehlgeschlagen', !isNeutralTone(tone));
       this.renderPreview();
     }
-    this.state.screen = 'captured';
-    this.render();
+    this.showScreen('captured');
   }
 
   /**
-   * Runs synchronous pixel work behind the busy overlay. The overlay is
-   * shown first and the work deferred until it has painted, otherwise the
-   * spinner never appears. Failures leave the image untouched and show the
-   * notice.
+   * Runs pixel work (baking, parking, waking) behind the busy overlay. The
+   * overlay is shown first and the work deferred until it has painted,
+   * otherwise the spinner never appears; work that is not heavy runs inline
+   * without the overlay. Failures leave the image untouched and show the
+   * notice; the caller checks the outcome on the page.
    */
-  private async runBusy(work: () => void, failMessage: string, heavy = true): Promise<void> {
+  private async runBusy(work: () => void | Promise<void>, logLabel: string, heavy = true): Promise<void> {
     if (!heavy) {
       try {
-        work();
+        await work();
       } catch (error) {
-        this.fail(failMessage, error);
+        this.fail(logLabel, error);
       }
       return;
     }
@@ -746,27 +705,9 @@ export class App {
     this.render();
     await afterPaint();
     try {
-      work();
-    } catch (error) {
-      this.fail(failMessage, error);
-    } finally {
-      this.state.busy = false;
-      this.render();
-    }
-  }
-
-  /**
-   * Runs asynchronous work (parking, waking) behind the busy overlay.
-   * Failures show the notice; the caller checks the outcome on the page.
-   */
-  private async runBusyAsync(work: () => Promise<void>, failMessage: string): Promise<void> {
-    this.state.busy = true;
-    this.render();
-    await afterPaint();
-    try {
       await work();
     } catch (error) {
-      this.fail(failMessage, error);
+      this.fail(logLabel, error);
     } finally {
       this.state.busy = false;
       this.render();
@@ -786,11 +727,12 @@ export class App {
       const file = await buildPdfFile(this.scan.list, this.state.level);
       const outcome = await sharePdf(file);
       this.state.busy = false;
-      this.state.sheetOpen = false;
       if (outcome === 'shared') {
         this.discardPages();
-        this.state.screen = 'start';
+        this.showScreen('start');
+        return;
       }
+      this.state.sheetOpen = false;
     } catch (error) {
       this.state.busy = false;
       this.fail('Teilen fehlgeschlagen', error);
