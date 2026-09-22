@@ -380,6 +380,25 @@ def auto_tone():
                          ("grayscale", 218, True), ("magic-wand", 274, False), ("check", 350, True)])
     return body
 
+# ---- v0.9 ------------------------------------------------------------------
+def zoomed():
+    """Captured view zoomed 3x on the paper text: two fingers, bars unchanged."""
+    fw = 350; fh = fw * 1.4142 * 0.9; fx = 20; fy = 70
+    zoom = 3.0
+    # keep the point (fx + 175, fy + 200) of the fitted view under the finger midpoint
+    ax, ay = fx + 175, fy + 200
+    tx = ax - zoom * ax; ty = ay - zoom * ay
+    body = (f'<rect x="{fx}" y="{fy}" width="{fw}" height="{fh}" fill="#6b7280"/>'
+            + f'<clipPath id="cap9"><rect x="{fx}" y="{fy}" width="{fw}" height="{fh}"/></clipPath>'
+            + f'<g clip-path="url(#cap9)"><g transform="translate({tx:.1f} {ty:.1f}) scale({zoom})">'
+            + paper(fx + 20, fy + 30, 310, 440, rot=-4) + '</g></g>'
+            + finger(ax - 70, ay + 40) + finger(ax + 70, ay - 40)
+            + f'<path d="M{ax-48} {ay+27} L{ax-20} {ay+11}" stroke="#111827" stroke-width="2" fill="none"/>'
+            + f'<path d="M{ax+48} {ay-27} L{ax+20} {ay-11}" stroke="#111827" stroke-width="2" fill="none"/>')
+    body += (btn("arrow-left", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
+             + btn("edit", 243, BAR) + btn("add-page", 338, BAR))
+    return body
+
 SCREENS = [
     ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app."),
     ("v0.1-02-camera", "v0.1 Camera with DIN frame", camera(), "#374151", "Camera: dashed DIN A frame at 90 % width, shutter below."),
@@ -403,6 +422,7 @@ SCREENS = [
     ("v0.7-01-shear", "v0.7 Shear mode", shear(), "#ffffff", "Shear: four independent corners follow the trapezoid."),
     ("v0.8-01-auto-crop", "v0.8 Auto-detected frame", auto_crop(), "#ffffff", "After [auto]: frame on the paper edges, wand left of confirm."),
     ("v0.8-02-auto-tone", "v0.8 Auto black-and-white", auto_tone(), "#ffffff", "After [auto]: grayscale on, contrast raised, wand in the bar."),
+    ("v0.9-01-zoom", "v0.9 Pinch zoom on the captured view", zoomed(), "#ffffff", "Pinch: the image zooms inside the stage, the bar stays put."),
 ]
 
 def main():

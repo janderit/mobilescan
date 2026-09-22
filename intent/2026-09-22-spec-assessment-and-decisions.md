@@ -76,3 +76,22 @@ Taken with Philip when the four follow-up milestones were defined
 | Contrast range | Widened to 0.5 .. 4.0 so auto can reach full black and white; slider mapping piecewise-linear with neutral at the centre tick. |
 | Auto feedback | Nothing found: brief warning icon (v0.4 notice), state unchanged. Partial results applied. Auto results are pending edits, back discards them. |
 | Auto button placement | In the button bar left of confirm in both edit views; falls back to the stage's top-right corner if seven targets do not fit on 360 px. |
+
+## v0.9 decisions (2026-09-22, pinch zoom)
+
+Taken with Philip when v0.9 was added. Up to v0.6 the browser's page zoom worked by accident;
+pinning the app box to the viewport removed it, and the request was to bring it back on
+purpose, limited to the image (`v0.9-zoom.md`).
+
+| Topic | Decision |
+|---|---|
+| Where | Captured view, crop/rotate view and brightness/contrast view. Not the camera view (that would be digital zoom), not the sheets. |
+| What zooms | Only the stage content. Bars, header and slider stay in place and keep their size; browser page zoom stays disabled. |
+| Zoom is view state | `ZoomState` (scale, translation) composed on top of the fitted view transform, never stored on the page, never baked or shared; reset on back, confirm, 90°, page switch and bakes. |
+| Range | 1 up to the lesser of 8 and 2 device pixels per image pixel (the loupe cap). No rubber band below 1. Content must cover the stage on each axis, else centred. |
+| One finger while zoomed | Pans in the captured and brightness/contrast views; in the crop/rotate view one finger stays reserved for handles, so panning there needs two fingers. Page swipe only in the fitted view. |
+| Second finger during a drag | Cancels the one-finger drag and its loupes; the pending frame keeps its current position. |
+| Double tap | Toggles fitted and 3x at the tap point. No reset button, no zoom indicator. |
+| Rendering | CSS transform on a wrapper during the gesture (no drawing per move), crisp redraw of the visible part from the full-resolution image on release; stage canvas keeps its size, so memory does not grow with zoom. Crop/rotate overlay is recomputed per move so handles keep their size. |
+| Loupes | Hidden once the zoomed view is as magnified as a loupe would be; otherwise as in v0.6. |
+| Gesture source | Pointer Events with two tracked pointers, `touch-action: none` on the stages. No touch or Safari gesture events. |

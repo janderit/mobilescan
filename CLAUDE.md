@@ -8,7 +8,9 @@ v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast), v0.4 (UI
 v0.5 (multi-page PDFs) and v0.6 (loupe previews while dragging) are implemented. The rest of the
 second roadmap is defined but not yet implemented: v0.7 (shear / perspective correction) and v0.8
 (auto-detect for frame and tone); see `intent/v0.7-shear.md` and `intent/v0.8-auto-detect.md`
-and the "v0.5 to v0.8 decisions" section of the decisions file. The repository contains the product spec (`README.md`),
+and the "v0.5 to v0.8 decisions" section of the decisions file. v0.9 (pinch zoom on the image
+in the captured and edit views) is defined in `intent/v0.9-zoom.md` and the "v0.9 decisions"
+section. The repository contains the product spec (`README.md`),
 design intent documents with per-version definitions, icons and mockups (`intent/`), and the
 TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -91,5 +93,5 @@ Crop/rotate view: [back] [crop|rotate] [rotate 90 right] [confirm], with loupes 
 ## Version roadmap
 
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
-v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect.
+v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom.
 Each version is independently deployable. Do not pull features from a later version into an earlier one.
