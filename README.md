@@ -4,7 +4,9 @@ MobileScan is a progressive web app that allows users to scan paper documents on
 
 ## Project state
 
-Planning stage, no source code yet. The spec below is the authoritative UX description.
+v0.1 is implemented (capture + share). Run `npm install`, then `npm run dev` for a local HTTPS
+dev server reachable from a phone on the LAN, or `npm run build` / `npm run deploy`; see
+`CLAUDE.md` for the full command list. The spec below is the authoritative UX description.
 Open questions in it have been resolved and the resolutions are recorded in `intent/`:
 
 - `intent/2026-09-22-spec-assessment-and-decisions.md`: gap assessment and decisions (tech stack, PDF page, compression UI, rotation, share outcome, deployment).

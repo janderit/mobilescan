@@ -1,0 +1,34 @@
+{
+  "name": "mobilescan",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Scan a paper document with the phone camera and share it as a PDF. Local only.",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "npm run icons && tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "icons": "node scripts/render-icons.mjs",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "deploy": "npm run build && sh scripts/deploy.sh"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@resvg/resvg-js": "^2.6.2",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "eslint": "^10.11.0",
+    "globals": "^17.12.0",
+    "jsdom": "^30.1.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vite": "^8.3.0",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^5.0.1"
+  }
+}

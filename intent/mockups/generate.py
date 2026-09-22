@@ -57,14 +57,20 @@ def btn(name, x, y, r=32, fill="#ffffff", stroke="#d1d5db", color="#111827", siz
     return (f'<circle cx="{x}" cy="{y}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
             + icon_at(name, x, y, size, color))
 
-def segmented(x, y, items, active, w=140, h=48):
-    """items: icon names. Returns a segmented control centred at x,y."""
+def segmented(x, y, items, active, w=140, h=48, captions=None):
+    """items: icon names. Returns a segmented control centred at x,y.
+    captions: optional list of short texts drawn under the icons."""
     n = len(items); seg = w / n; out = [f'<rect x="{x-w/2}" y="{y-h/2}" width="{w}" height="{h}" rx="12" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1.5"/>']
     for i, it in enumerate(items):
         cx = x - w/2 + seg*(i+0.5)
+        color = "#ffffff" if i == active else "#374151"
         if i == active:
             out.append(f'<rect x="{cx-seg/2+4}" y="{y-h/2+4}" width="{seg-8}" height="{h-8}" rx="9" fill="#1e40af"/>')
-        out.append(icon_at(it, cx, y, 24, "#ffffff" if i == active else "#374151"))
+        if captions:
+            out.append(icon_at(it, cx, y - 8, 24, color))
+            out.append(f'<text x="{cx}" y="{y+18}" text-anchor="middle" font-size="12" fill="{color}">{captions[i]}</text>')
+        else:
+            out.append(icon_at(it, cx, y, 24, color))
     return "".join(out)
 
 def paper(x, y, w, h, rot=0, bg="#fdfdf7", line="#9ca3af", opacity=1.0):
@@ -113,9 +119,9 @@ def start():
             f'<text x="{W/2}" y="422" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">Dokument scannen</text>')
 
 def camera():
-    # live video fills screen; DIN frame 1:sqrt2, 90% of width
+    # live video fills screen (cover); DIN frame 1:sqrt2, 90% of the visible width, centred
     fw = 0.9 * W; fh = fw * 1.4142
-    fx = (W - fw)/2; fy = 120
+    fx = (W - fw)/2; fy = (H - fh)/2
     return (f'<rect x="0" y="0" width="{W}" height="{H}" fill="#374151"/>'
             + paper(70, 170, 250, 350, rot=-4, opacity=0.9)
             + f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.15"/>'
@@ -137,7 +143,7 @@ def share_sheet():
     sheet = (f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.4"/>'
              f'<rect x="0" y="560" width="{W}" height="300" rx="28" fill="#ffffff"/>'
              f'<rect x="165" y="574" width="60" height="5" rx="2.5" fill="#d1d5db"/>'
-             + segmented(W/2, 640, ["file-small", "file-medium", "file-large"], 1, w=240, h=56)
+             + segmented(W/2, 640, ["file-small", "file-medium", "file-large"], 1, w=240, h=64, captions=["Klein", "Mittel", "Groß"])
              + btn("close", 70, 740) + btn("check", 320, 740, fill="#1e40af", stroke="#1e40af", color="#ffffff"))
     return captured() + sheet
 

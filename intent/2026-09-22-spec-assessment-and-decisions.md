@@ -27,7 +27,7 @@ decisions taken with Philip in the planning session.
 ## Assumptions still open (will be applied unless overridden)
 
 - Single page per PDF. No multi-page capture in v1.
-- DIN frame is 1:sqrt2, centred, sized so its larger fit dimension is 90% of the captured image.
+- DIN frame is 1:sqrt2, centred, sized so its larger fit dimension is 90% of the *visible* part of the captured image (revised after v0.1 device testing: with `object-fit: cover` on a tall phone, 90% of the full image width ran off screen).
 - Crop edges move freely (aspect not locked); frame may not leave the captured image bounds.
 - Baking rotation rotates the full captured image about the frame centre and resets frame rotation to 0. A 90-degree step swaps the frame's width and height so the visible area stays the same paper region.
 - The crop/rotate view's button row is [back] [crop|rotate] [rotate 90 right] [confirm]; the 90-degree button is available in both crop and rotate mode.
@@ -37,5 +37,5 @@ decisions taken with Philip in the planning session.
 - Portrait-only manifest orientation; rear camera only.
 - Service worker caches the app shell only, never image data. Install prompt is browser-driven (Android); iOS users add to home screen manually; no in-app hint in v1.
 - Captured resolution: highest the video track offers, capped to stay under iOS canvas limits (about 16 MP).
-- Icons: inline SVG, no icon font or CDN.
+- Icons: inline SVG, no icon font or CDN. Exception added after v0.1 device testing: the three compression icons in the share sheet carry short captions (Klein / Mittel / Groß) because the file icons alone were not intuitive.
 - PDF built with a small client library (pdf-lib or jsPDF); JPEG quality per level roughly 0.5 / 0.75 / 0.92.

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.local
+.DS_Store
+# generated at build time from intent/icons/app-icon.svg
+public/icons/

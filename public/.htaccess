@@ -1,0 +1,25 @@
+# MobileScan static hosting on uberspace (Apache).
+# No rewrite rules: this is a plain static file deployment.
+
+AddType application/manifest+json .webmanifest
+AddType application/javascript .mjs
+
+# <Files>/<FilesMatch> only match the basename, so hashed files under
+# /assets/ are tagged via SetEnvIf on the request URI instead (mod_setenvif,
+# not mod_rewrite).
+SetEnvIf Request_URI "^/assets/" MOBILESCAN_IMMUTABLE
+
+<IfModule mod_headers.c>
+    # Required for the service worker to control the whole origin.
+    <Files "sw.js">
+        Header set Service-Worker-Allowed "/"
+    </Files>
+
+    # Never let the browser/proxy cache the files that decide which build is
+    # active; the hashed assets below are cached forever instead.
+    <FilesMatch "^(sw\.js|index\.html|manifest\.webmanifest)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+
+    Header set Cache-Control "max-age=31536000, immutable" env=MOBILESCAN_IMMUTABLE
+</IfModule>

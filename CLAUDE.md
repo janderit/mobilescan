@@ -4,10 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-MobileScan is in the planning stage. The repository contains the product spec (`README.md`),
-design intent documents with per-version definitions, icons and mockups (`intent/`), and no
-source code yet. The tech stack is decided (TypeScript + Vite, no UI framework, Vitest, pdf-lib).
-When the v0.1 scaffold lands, add the build, lint, test and deploy commands to this file.
+v0.1 (capture + share) is implemented. The repository contains the product spec (`README.md`),
+design intent documents with per-version definitions, icons and mockups (`intent/`), and the
+TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
+
+## Commands
+
+- `npm install`: install dependencies.
+- `npm run dev`: starts the Vite dev server with `--host` and a self-signed HTTPS cert
+  (`@vitejs/plugin-basic-ssl`), so a phone on the same LAN can open it and grant camera access.
+  Accept the self-signed certificate warning on the phone once.
+- `npm run build`: renders the app icons from `intent/icons/app-icon.svg` (`npm run icons`),
+  type-checks (`tsc --noEmit`), then builds the static site into `dist/`.
+- `npm test`: runs the Vitest suite (`test/**/*.test.ts`).
+- `npm run lint`: runs ESLint.
+- `npm run deploy`: builds, then runs `scripts/deploy.sh` to scp `dist/` to the host, reading
+  `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env` (copy `.env.example` to start one).
+
+Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
+(`render-icons.mjs`, `deploy.sh`), `public/` static files served as-is, including `.htaccess`
+for the Apache MIME types and cache headers uberspace needs.
 
 Read in this order before implementing anything:
 
@@ -28,14 +44,14 @@ Hard constraints from the spec that shape every design decision:
 - **Local only.** All image processing happens in the browser. No data leaves the device except via the OS share-to target the user picks. No server component exists and none should be added.
 - **Static hosting.** Deployed as static files to uberspace (https://mobilescan.app), served by Apache, copied via an scp script that reads `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env`. Anything that requires a backend or server-side rendering is out of scope.
 - **No retention.** After a successful share, the image is discarded. Do not add persistence (localStorage, IndexedDB, caches of scans). The service worker precaches the app shell only.
-- **Icons, not labels.** UI buttons carry icons only. The one visible text is the German start button "Dokument scannen". Accessibility labels are German `aria-label`s.
+- **Icons, not labels.** UI buttons carry icons only. The visible texts are the German start button "Dokument scannen" and, since the file icons alone proved unintuitive, the short captions "Klein / Mittel / Groß" under the compression icons in the share sheet. Accessibility labels are German `aria-label`s.
 - **Target browsers.** Modern mobile Safari and Chrome only. No desktop or file-input fallback for the camera.
 
 ## Core UX model (spec plus decisions)
 
 The capture frame is the central concept:
 
-- Camera view shows a dashed DIN A-format frame (1:sqrt2) in portrait, 90% of the captured width. The full image is captured and kept; only the frame area is displayed. The margin exists so that later rotation/cropping has material to work with.
+- Camera view shows a dashed DIN A-format frame (1:sqrt2) in portrait, 90% of the *visible* captured width (the video is displayed with `object-fit: cover`, which crops the sides of a 3:4 camera image on tall phones; the frame is fitted into the visible part so the dashes are always on screen). The full image is captured and kept; only the frame area is displayed. The margin, at least 10%, exists so that later rotation/cropping has material to work with.
 - **Cropping never modifies pixels.** It only updates the stored frame geometry (`cx, cy, width, height, angle` in image pixels). Crop handles (four edges independently, four corners moving two edges) operate in frame-local coordinates, because the frame may already be rotated. The image stays still on screen; the frame is what moves and rotates. Aspect is free; the frame may not leave the image.
 - **Rotation:** dragging around the frame boundary gives fine skew correction, clamped to ±15° around the nearest right angle. A separate "rotate 90° right" button turns in 90° steps and swaps frame width/height. Both accumulate in `angle` and are baked into the image on confirm, with white fill in exposed areas, after which `angle` is 0 again.
 - **Brightness/contrast** uses one slider with a segmented toggle. The preview is a CSS filter (no pixel work while dragging); the values are baked into the whole captured image on confirm.
