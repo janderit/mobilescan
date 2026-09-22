@@ -1,5 +1,7 @@
 /** Canvas helpers shared by the views, the bake and the page store. */
 
+import { applyAffine, imageCorners, invertAffine, mapQuad, type Affine, type Rect } from './geometry';
+
 /** A blank canvas of the given size with its 2D context. */
 export function createCanvas(
   width: number,
@@ -84,7 +86,7 @@ export class WorkingCanvas {
  */
 export function sampleImage(
   image: CanvasImageSource,
-  transform: { a: number; b: number; c: number; d: number; e: number; f: number },
+  transform: Affine,
   width: number,
   height: number,
   into?: WorkingCanvas,
@@ -135,28 +137,19 @@ export function sizeDisplayCanvas(canvas: HTMLCanvasElement, width: number, heig
 export function drawImageThrough(
   ctx: CanvasRenderingContext2D,
   image: HTMLCanvasElement,
-  transform: { a: number; b: number; c: number; d: number; e: number; f: number },
+  transform: Affine,
   width: number,
   height: number,
   dpr: number,
-  clip?: { x: number; y: number; width: number; height: number },
+  clip?: Rect,
 ): void {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   // Visible image region: the stage corners mapped back into image pixels.
   const t = transform;
-  const det = t.a * t.d - t.b * t.c;
-  if (!det) return;
-  const inv = { a: t.d / det, b: -t.b / det, c: -t.c / det, d: t.a / det };
-  const corners = [
-    { x: 0, y: 0 },
-    { x: width, y: 0 },
-    { x: width, y: height },
-    { x: 0, y: height },
-  ].map((p) => ({
-    x: inv.a * (p.x - t.e) + inv.c * (p.y - t.f),
-    y: inv.b * (p.x - t.e) + inv.d * (p.y - t.f),
-  }));
+  if (!(t.a * t.d - t.b * t.c)) return;
+  const back = invertAffine(t);
+  const corners = mapQuad(imageCorners(width, height), (p) => applyAffine(back, p));
   const x0 = Math.max(0, clip?.x ?? 0, Math.floor(Math.min(...corners.map((p) => p.x))) - 1);
   const y0 = Math.max(0, clip?.y ?? 0, Math.floor(Math.min(...corners.map((p) => p.y))) - 1);
   const x1 = Math.min(image.width, clip ? clip.x + clip.width : Infinity, Math.ceil(Math.max(...corners.map((p) => p.x))) + 1);

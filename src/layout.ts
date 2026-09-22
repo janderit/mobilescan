@@ -5,11 +5,19 @@
  */
 
 import type { Frame, Point, UprightFrame } from './model';
-import { applyAffine, imageCorners, mapQuad, rotationAbout, type Affine } from './affine';
+import { EPSILON } from './angles';
+import {
+  applyAffine,
+  distance,
+  imageCorners,
+  mapQuad,
+  rotationAbout,
+  scaleAffine,
+  translateAffine,
+  type Affine,
+} from './affine';
 import { applyHomography, homographyFromPoints, multiplyHomography, type Homography } from './homography';
 import { boundsOf, frameCorners, quadCorners, scaleFrame, type Rect } from './frame';
-
-const EPSILON = 1e-9;
 
 /** iOS Safari caps canvases at roughly 16.7 M pixels; stay below that. */
 export const MAX_CAPTURE_PIXELS = 16_000_000;
@@ -39,27 +47,24 @@ export function captureSize(
 }
 
 /**
- * The transform that `object-fit: cover; object-position: center` applies.
- * A source point p maps to the view as `p * scale + offset`.
+ * The transform that `object-fit: cover; object-position: center` applies to
+ * a source of the given size displayed in the given view: a uniform scale
+ * (`a`, `d`) and a centring offset (`e`, `f`), source pixel -> view pixel.
  */
-export interface CoverTransform {
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-}
-
-/** Cover transform of a source of the given size displayed in the given view. */
 export function coverTransform(
   srcWidth: number,
   srcHeight: number,
   viewWidth: number,
   viewHeight: number,
-): CoverTransform {
+): Affine {
   const scale = Math.max(viewWidth / srcWidth, viewHeight / srcHeight);
   return {
-    scale,
-    offsetX: (viewWidth - srcWidth * scale) / 2,
-    offsetY: (viewHeight - srcHeight * scale) / 2,
+    a: scale,
+    b: 0,
+    c: 0,
+    d: scale,
+    e: (viewWidth - srcWidth * scale) / 2,
+    f: (viewHeight - srcHeight * scale) / 2,
   };
 }
 
@@ -74,30 +79,12 @@ export function visibleImageRect(
   viewHeight: number,
 ): Rect {
   const t = coverTransform(srcWidth, srcHeight, viewWidth, viewHeight);
-  const x = Math.max(0, -t.offsetX / t.scale);
-  const y = Math.max(0, -t.offsetY / t.scale);
+  const scale = t.a;
   return {
-    x,
-    y,
-    width: Math.min(srcWidth, viewWidth / t.scale),
-    height: Math.min(srcHeight, viewHeight / t.scale),
-  };
-}
-
-/**
- * The frame as an axis-aligned rectangle in view coordinates.
- * A stored (confirmed) page frame is always upright, angle 0 and without corner
- * offsets, because every bake produces one; only the editor's pending frame is
- * rotated or sheared. This therefore maps the rectangle only.
- */
-export function frameToViewRect(frame: Frame, t: CoverTransform): Rect {
-  const width = frame.width * t.scale;
-  const height = frame.height * t.scale;
-  return {
-    x: frame.cx * t.scale + t.offsetX - width / 2,
-    y: frame.cy * t.scale + t.offsetY - height / 2,
-    width,
-    height,
+    x: Math.max(0, -t.e / scale),
+    y: Math.max(0, -t.f / scale),
+    width: Math.min(srcWidth, viewWidth / scale),
+    height: Math.min(srcHeight, viewHeight / scale),
   };
 }
 
@@ -150,14 +137,7 @@ export function bakeLayout(
     const size = captureSize(width, height, maxPixels);
     width = size.width;
     height = size.height;
-    transform = {
-      a: transform.a * scale,
-      b: transform.b * scale,
-      c: transform.c * scale,
-      d: transform.d * scale,
-      e: transform.e * scale,
-      f: transform.f * scale,
-    };
+    transform = scaleAffine(transform, scale);
     baked = scaleFrame(baked, scale);
   }
   return { width, height, transform, frame: baked };
@@ -181,14 +161,7 @@ export function viewTransform(
   const scale = Math.min(viewWidth / box.width, viewHeight / box.height);
   const offsetX = (viewWidth - box.width * scale) / 2 - box.x * scale;
   const offsetY = (viewHeight - box.height * scale) / 2 - box.y * scale;
-  return {
-    a: rotate.a * scale,
-    b: rotate.b * scale,
-    c: rotate.c * scale,
-    d: rotate.d * scale,
-    e: rotate.e * scale + offsetX,
-    f: rotate.f * scale + offsetY,
-  };
+  return translateAffine(scaleAffine(rotate, scale), offsetX, offsetY);
 }
 
 // ---- v0.7: the shear bake layout ----------------------------------------------
@@ -225,9 +198,8 @@ export function warpLayout(
 ): WarpLayout {
   const quad = quadCorners(frame);
   const [nw, ne, se, sw] = quad;
-  const length = (a: Point, b: Point): number => Math.hypot(b.x - a.x, b.y - a.y);
-  const width = (length(nw, ne) + length(sw, se)) / 2;
-  const height = (length(nw, sw) + length(ne, se)) / 2;
+  const width = (distance(nw, ne) + distance(sw, se)) / 2;
+  const height = (distance(nw, sw) + distance(ne, se)) / 2;
   const target = imageCorners(width, height);
   const h = homographyFromPoints(quad, target);
 

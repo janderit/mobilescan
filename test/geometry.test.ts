@@ -3,15 +3,24 @@ import {
   MAX_CAPTURE_PIXELS,
   SQRT2,
   captureSize,
+  applyAffine,
+  boundsOf,
   coverTransform,
+  frameCorners,
   frameSourceRect,
-  frameToViewRect,
   scaleFrame,
   uprightFrame,
   visibleImageRect,
   initialFrame,
+  type Affine,
+  type Rect,
 } from '../src/geometry';
 import type { Frame, UprightFrame } from '../src/model';
+
+/** The (upright) frame mapped through a cover transform, as a view rectangle. */
+function frameViewRect(frame: Frame, t: Affine): Rect {
+  return boundsOf(frameCorners(frame).map((p) => applyAffine(t, p)));
+}
 
 describe('initialFrame', () => {
   it('clamps the height when 0.9 * width * sqrt2 exceeds 0.9 * height', () => {
@@ -93,31 +102,35 @@ describe('coverTransform', () => {
   it('fills the view and centres the overflow on the wide axis', () => {
     // A 3000 x 4000 capture shown full-bleed in a 390 x 844 CSS viewport.
     const t = coverTransform(3000, 4000, 390, 844);
-    expect(t.scale).toBeCloseTo(844 / 4000, 12);
-    expect(t.offsetY).toBeCloseTo(0, 12);
-    expect(t.offsetX).toBeLessThan(0);
+    expect(t.a).toBeCloseTo(844 / 4000, 12);
+    expect(t.d).toBe(t.a);
+    expect(t.b).toBe(0);
+    expect(t.c).toBe(0);
+    expect(t.f).toBeCloseTo(0, 12);
+    expect(t.e).toBeLessThan(0);
     // Both view axes are fully covered.
-    expect(3000 * t.scale + 2 * t.offsetX).toBeCloseTo(390, 9);
-    expect(4000 * t.scale + 2 * t.offsetY).toBeCloseTo(844, 9);
+    expect(3000 * t.a + 2 * t.e).toBeCloseTo(390, 9);
+    expect(4000 * t.d + 2 * t.f).toBeCloseTo(844, 9);
   });
 
   it('maps the source centre to the view centre', () => {
     const t = coverTransform(3000, 4000, 390, 844);
-    expect(1500 * t.scale + t.offsetX).toBeCloseTo(195, 9);
-    expect(2000 * t.scale + t.offsetY).toBeCloseTo(422, 9);
+    const centre = applyAffine(t, { x: 1500, y: 2000 });
+    expect(centre.x).toBeCloseTo(195, 9);
+    expect(centre.y).toBeCloseTo(422, 9);
   });
 });
 
-describe('frameToViewRect', () => {
+describe('frame through the cover transform', () => {
   it('places the frame centred in the view and scaled by the cover transform', () => {
     const frame = initialFrame(3000, 4000);
     const t = coverTransform(3000, 4000, 390, 844);
-    const rect = frameToViewRect(frame, t);
+    const rect = frameViewRect(frame, t);
 
     expect(rect.x + rect.width / 2).toBeCloseTo(195, 9);
     expect(rect.y + rect.height / 2).toBeCloseTo(422, 9);
-    expect(rect.width).toBeCloseTo(frame.width * t.scale, 9);
-    expect(rect.height).toBeCloseTo(frame.height * t.scale, 9);
+    expect(rect.width).toBeCloseTo(frame.width * t.a, 9);
+    expect(rect.height).toBeCloseTo(frame.height * t.a, 9);
     expect(rect.height / rect.width).toBeCloseTo(SQRT2, 12);
     // The frame is visible inside the viewport on the covered axis.
     expect(rect.y).toBeGreaterThanOrEqual(0);
@@ -164,7 +177,7 @@ describe('initialFrame with a visible region', () => {
     expect(frame.cx).toBeCloseTo(1500, 6);
     expect(frame.cy).toBeCloseTo(2000, 6);
     // and therefore lies fully inside the screen once mapped back
-    const rect = frameToViewRect(frame, coverTransform(3000, 4000, 390, 844));
+    const rect = frameViewRect(frame, coverTransform(3000, 4000, 390, 844));
     expect(rect.x).toBeGreaterThanOrEqual(0);
     expect(rect.x + rect.width).toBeLessThanOrEqual(390 + 1e-6);
     expect(rect.y).toBeGreaterThanOrEqual(0);

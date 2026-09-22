@@ -7,7 +7,7 @@
 
 import type { Frame, Point, UprightFrame } from './model';
 import { mapQuad, type Quad } from './affine';
-import { normalizeAngle } from './angles';
+import { EPSILON, normalizeAngle, QUARTER } from './angles';
 
 /** Aspect ratio of the DIN A formats: height = width * SQRT2 in portrait. */
 export const SQRT2 = Math.SQRT2;
@@ -108,8 +108,6 @@ export function frameSourceRect(frame: UprightFrame): Rect {
 /** Minimum frame side as a fraction of the image width. */
 export const MIN_FRAME_FRACTION = 0.1;
 
-const QUARTER = Math.PI / 2;
-const EPSILON = 1e-9;
 
 /** Rotates a vector by `angle` (y-down coordinates: positive is clockwise on screen). */
 export function rotateVector(x: number, y: number, angle: number): Point {

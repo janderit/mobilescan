@@ -29,15 +29,21 @@
 
 import type { Frame, Point } from './model';
 import {
+  applyAffine,
   baseAngle,
   clampSkew,
+  distance,
   invertAffine,
+  mapQuad,
   MAX_SKEW,
   MIN_FRAME_FRACTION,
   normalizeAngle,
   quadValid,
   rectLocalCorners,
+  rotationAbout,
+  scaleAffine,
   toFrameLocal,
+  translateAffine,
   withCorners,
   type Affine,
   type Quad,
@@ -106,21 +112,13 @@ function workingLayout(frame: Frame, longSide: number, outward: number): Working
   const fh = frame.height * scale;
   const width = Math.max(1, Math.ceil(fw * (1 + 2 * outward)));
   const height = Math.max(1, Math.ceil(fh * (1 + 2 * outward)));
-  // working = scale * rotate(-angle) * (p - centre) + workingCentre
-  const c = Math.cos(-frame.angle) * scale;
-  const s = Math.sin(-frame.angle) * scale;
-  const a = c;
-  const b = s;
-  const cc = -s;
-  const d = c;
-  const transform: Affine = {
-    a,
-    b,
-    c: cc,
-    d,
-    e: width / 2 - (a * frame.cx + cc * frame.cy),
-    f: height / 2 - (b * frame.cx + d * frame.cy),
-  };
+  // Turn the frame upright about its centre, scale, and put the centre at the working centre.
+  const centre = { x: frame.cx, y: frame.cy };
+  const transform = translateAffine(
+    scaleAffine(rotationAbout(-frame.angle, centre), scale),
+    width / 2 - frame.cx * scale,
+    height / 2 - frame.cy * scale,
+  );
   return {
     width,
     height,
@@ -384,7 +382,6 @@ export function detectEdges(lum: Luminance, frame: Rect): EdgeDetection {
 
 // ---- frame from corners ---------------------------------------------------
 
-const length = (a: Point, b: Point): number => Math.hypot(b.x - a.x, b.y - a.y);
 const direction = (a: Point, b: Point): number => Math.atan2(b.y - a.y, b.x - a.x);
 
 /**
@@ -400,8 +397,8 @@ export function frameFromCorners(corners: Quad, current: Frame): Frame {
 /** `frameFromCorners` plus whether the rotation had to be clamped to the skew range. */
 export function frameFromCornersDetailed(corners: Quad, current: Frame): { frame: Frame; clamped: boolean } {
   const [nw, ne, se, sw] = corners;
-  const width = (length(nw, ne) + length(sw, se)) / 2;
-  const height = (length(nw, sw) + length(ne, se)) / 2;
+  const width = (distance(nw, ne) + distance(sw, se)) / 2;
+  const height = (distance(nw, sw) + distance(ne, se)) / 2;
   // Each edge's direction relative to what the current rotation predicts.
   const relative = (a: Point, b: Point, expected: number): number =>
     normalizeAngle(direction(a, b) - expected);
@@ -422,11 +419,11 @@ export function frameFromCornersDetailed(corners: Quad, current: Frame): { frame
     angle,
   };
   const local = rectLocalCorners(rect);
-  const offsets = corners.map((p, i) => {
+  const offsets = mapQuad(corners, (p, i) => {
     const q = toFrameLocal(rect, p);
     const offset = { x: q.x - local[i]!.x, y: q.y - local[i]!.y };
     return Math.hypot(offset.x, offset.y) < MIN_CORNER_OFFSET ? { x: 0, y: 0 } : offset;
-  }) as Quad;
+  });
   return { frame: withCorners(rect, offsets), clamped };
 }
 
@@ -458,10 +455,7 @@ export function detectFrameDetailed(
   const edges = detectEdges(luminance, layout.frame);
   if (edges.found === 0) return { frame: null, found: 0, clamped: false };
   const back = invertAffine(layout.transform);
-  const corners = edges.corners.map((p) => ({
-    x: back.a * p.x + back.c * p.y + back.e,
-    y: back.b * p.x + back.d * p.y + back.f,
-  })) as Quad;
+  const corners = mapQuad(edges.corners, (p) => applyAffine(back, p));
   const { frame, clamped } = frameFromCornersDetailed(corners, current);
   const minSide = MIN_FRAME_FRACTION * imageWidth;
   if (!(frame.width >= minSide) || !(frame.height >= minSide)) return { frame: null, found: edges.found, clamped };
@@ -601,10 +595,10 @@ function quadsAgree(a: Quad, b: Quad, tolerance: number): boolean {
 }
 
 function lerpQuad(from: Quad, to: Quad, t: number): Quad {
-  return from.map((p, i) => ({
+  return mapQuad(from, (p, i) => ({
     x: p.x + (to[i]!.x - p.x) * t,
     y: p.y + (to[i]!.y - p.y) * t,
-  })) as Quad;
+  }));
 }
 
 // ---- tone -----------------------------------------------------------------

@@ -10,7 +10,7 @@
 import * as icons from './icons';
 import type { Frame, Point, UprightFrame } from './model';
 import { iconButton, el, prefersReducedMotion, svgEl } from './ui';
-import { coverTransform, frameToViewRect, initialFrame, visibleImageRect, type CoverTransform } from './geometry';
+import { applyAffine, coverTransform, frameCorners, initialFrame, visibleImageRect, type Affine } from './geometry';
 import { stopCamera, type CameraSession } from './camera';
 import type { TrackerState } from './detect';
 import { LiveDetector } from './live-detect';
@@ -57,7 +57,7 @@ export class CameraView {
   /** Frame shown over the live video, in track pixel coordinates. */
   private frame: UprightFrame | null = null;
   /** Track pixels -> viewport pixels of the camera screen. */
-  private cover: CoverTransform | null = null;
+  private cover: Affine | null = null;
 
   private observer: ResizeObserver | null = null;
   /** Detaches the window listeners on dispose(). */
@@ -181,21 +181,9 @@ export class CameraView {
     const frame = this.frame;
     const cover = this.cover;
     if (!frame || !cover) return;
-    const toView = (p: Point): Point => ({ x: p.x * cover.scale + cover.offsetX, y: p.y * cover.scale + cover.offsetY });
     const corners = this.detectEnabled && this.liveState.found ? this.liveState.corners : null;
     const found = corners !== null;
-    let points: Point[];
-    if (corners) {
-      points = corners.map(toView);
-    } else {
-      const rect = frameToViewRect(frame, cover);
-      points = [
-        { x: rect.x, y: rect.y },
-        { x: rect.x + rect.width, y: rect.y },
-        { x: rect.x + rect.width, y: rect.y + rect.height },
-        { x: rect.x, y: rect.y + rect.height },
-      ];
-    }
+    const points: Point[] = (corners ?? frameCorners(frame)).map((p) => applyAffine(cover, p));
     const viewW = this.element.clientWidth;
     const viewH = this.element.clientHeight;
     const inner = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');

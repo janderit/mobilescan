@@ -8,7 +8,7 @@
  */
 
 import { LOUPE_MAX_DEVICE_PIXELS } from './loupe';
-import type { Affine, Point, Rect } from './geometry';
+import { EPSILON, type Affine, type Point, type Rect } from './geometry';
 
 export interface ZoomState {
   scale: number;
@@ -28,8 +28,6 @@ export const DOUBLE_TAP_MS = 300;
 export const DOUBLE_TAP_RADIUS = 24;
 /** A pointer that travels less than this counts as a tap without movement. */
 export const TAP_SLOP = 10;
-
-const EPSILON = 1e-9;
 
 export function isFittedZoom(z: ZoomState): boolean {
   return z.scale <= 1 + EPSILON;

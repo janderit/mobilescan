@@ -24,6 +24,7 @@ import {
   withoutCorners,
   type Homography,
   type Point,
+  mapQuad,
   type Quad,
 } from '../src/geometry';
 import { warpRows } from '../src/warp';
@@ -60,14 +61,14 @@ function frameOnQuad(quad: Quad, angle = 0): Frame {
     angle,
   };
   const local = rectLocalCorners(rect);
-  const corners = quad.map((p, i) => {
+  const corners = mapQuad(quad, (p, i) => {
     const r = fromFrameLocal(rect, local[i]!);
     // offset in frame-local coordinates
     const d = { x: p.x - r.x, y: p.y - r.y };
     const c = Math.cos(-angle);
     const s = Math.sin(-angle);
     return { x: d.x * c - d.y * s, y: d.x * s + d.y * c };
-  }) as Quad;
+  });
   return { ...rect, corners };
 }
 

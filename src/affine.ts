@@ -4,7 +4,7 @@
  */
 
 import type { Point } from './model';
-import { isRightAngle } from './angles';
+import { isRightAngle, QUARTER } from './angles';
 
 /** Four points in corner order nw, ne, se, sw. */
 export type Quad = [Point, Point, Point, Point];
@@ -52,7 +52,20 @@ export function affineScale(t: Affine): number {
   return Math.hypot(t.a, t.b);
 }
 
-const QUARTER = Math.PI / 2;
+/** `t` followed by a uniform scale by `s` about the origin. */
+export function scaleAffine(t: Affine, s: number): Affine {
+  return { a: t.a * s, b: t.b * s, c: t.c * s, d: t.d * s, e: t.e * s, f: t.f * s };
+}
+
+/** `t` followed by a translation by (tx, ty). */
+export function translateAffine(t: Affine, tx: number, ty: number): Affine {
+  return { ...t, e: t.e + tx, f: t.f + ty };
+}
+
+/** Euclidean distance between two points. */
+export function distance(a: Point, b: Point): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
 
 /** cos/sin snapped to exact 0/±1 for multiples of 90°, so those rotations copy pixels exactly. */
 function exactCosSin(angle: number): { c: number; s: number } {

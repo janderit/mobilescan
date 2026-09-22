@@ -13,8 +13,10 @@ export const MAX_SKEW = (15 * Math.PI) / 180;
 /** Fine rotation snaps to the nearest right angle within this. */
 export const SNAP_SKEW = (0.5 * Math.PI) / 180;
 
-const QUARTER = Math.PI / 2;
-const EPSILON = 1e-9;
+/** A right angle, in radians. */
+export const QUARTER = Math.PI / 2;
+/** Numeric tolerance for comparisons of angles, pixels and scales. */
+export const EPSILON = 1e-9;
 
 /** Normalises an angle into (-PI, PI]. */
 export function normalizeAngle(angle: number): number {
