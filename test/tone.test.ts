@@ -13,6 +13,7 @@ import {
   temperatureMatrix,
   toneFilter,
   toneFraction,
+  toneFromFraction,
   toneLookups,
   toneUsesShorthandOnly,
   type Tone,
@@ -74,11 +75,35 @@ describe('tone ranges', () => {
     expect(clampTone('brightness', Number.NaN)).toBe(1);
   });
 
-  it('places the neutral tick in the middle for brightness and temperature, a third for contrast', () => {
+  it('places the neutral tick in the middle for every value (piecewise-linear, v0.8)', () => {
     expect(toneFraction('brightness', 1)).toBeCloseTo(0.5, 12);
     expect(toneFraction('temperature', 0)).toBeCloseTo(0.5, 12);
-    expect(toneFraction('contrast', 1)).toBeCloseTo(1 / 3, 12);
-    expect(toneFraction('contrast', 2)).toBe(1);
+    expect(toneFraction('contrast', 1)).toBeCloseTo(0.5, 12);
+    expect(toneFraction('contrast', 0.5)).toBe(0);
+    expect(toneFraction('contrast', 4)).toBe(1);
+    expect(toneFraction('contrast', 2.5)).toBeCloseTo(0.75, 12);
+    expect(toneFraction('contrast', 0.75)).toBeCloseTo(0.25, 12);
+  });
+
+  it('widens contrast to 0.5 .. 4.0', () => {
+    expect(TONE_RANGES.contrast.max).toBe(4);
+    expect(clampTone('contrast', 3.5)).toBe(3.5);
+    expect(clampTone('contrast', 9)).toBe(4);
+  });
+
+  it('maps slider positions back to values, neutral at the centre and the ends at the range', () => {
+    for (const key of TONE_KEYS) {
+      const range = TONE_RANGES[key];
+      expect(toneFromFraction(key, 0)).toBe(range.min);
+      expect(toneFromFraction(key, 0.5)).toBe(range.neutral);
+      expect(toneFromFraction(key, 1)).toBe(range.max);
+      for (const f of [0.1, 0.25, 0.4, 0.6, 0.75, 0.9]) {
+        const value = toneFromFraction(key, f);
+        expect(Math.abs(toneFraction(key, value) - f)).toBeLessThan(0.01);
+      }
+    }
+    expect(toneFromFraction('contrast', 0.75)).toBeCloseTo(2.5, 6);
+    expect(toneFromFraction('contrast', 0.25)).toBeCloseTo(0.75, 6);
   });
 });
 

@@ -14,6 +14,10 @@
  * own while the edge handles keep cropping the underlying rectangle; the frame
  * is drawn as that quadrilateral in both modes and the caller warps the image
  * on confirm. The frame body cannot be dragged.
+ *
+ * Auto (v0.8): the wand button looks for the paper edges near the frame
+ * (`detect.ts`) and replaces the pending frame with what it found; nothing
+ * found shows the notice and leaves the frame alone.
  */
 
 import * as icons from './icons';
@@ -35,12 +39,14 @@ import {
   rotate90Right,
   toFrameLocal,
   viewTransform,
+  withoutCorners,
   type Affine,
   type Handle,
   type Point,
   type Quad,
 } from './geometry';
-import { releaseCanvas } from './canvas';
+import { releaseCanvas, sampleImage } from './canvas';
+import { detectFrame, frameWorkingLayout } from './detect';
 import {
   CORNERS,
   LOUPE_DIAMETER,
@@ -65,6 +71,8 @@ export interface EditorCallbacks {
   onCancel(): void;
   /** Confirm with the pending frame (angle or corner offsets may be non-zero: the caller bakes them). */
   onConfirm(frame: Frame): void;
+  /** Auto-detect found nothing usable: show the brief warning notice. */
+  onNotice(): void;
 }
 
 /** Touch target radius of a crop handle in CSS pixels (44 px target). */
@@ -189,12 +197,14 @@ export class CropRotateView {
 
     const rotate90 = iconButton(icons.rotate90Right, 'Um 90° nach rechts drehen', 'compact');
     rotate90.addEventListener('click', () => this.rotate90());
+    const auto = iconButton(icons.magicWand, 'Automatisch erkennen', 'compact');
+    auto.addEventListener('click', () => this.autoDetect());
     const confirm = iconButton(icons.check, 'Bestätigen', 'primary compact');
     confirm.addEventListener('click', () => this.confirm());
 
     const bar = document.createElement('div');
     bar.className = 'button-bar button-bar-compact';
-    bar.append(back, segmented, rotate90, confirm);
+    bar.append(back, segmented, rotate90, auto, confirm);
 
     this.element = document.createElement('section');
     this.element.className = 'screen screen-edit';
@@ -245,6 +255,31 @@ export class CropRotateView {
   private rotate90(): void {
     if (!this.pending || this.drag) return;
     this.pending = rotate90Right(this.pending);
+    this.layout();
+  }
+
+  /**
+   * Presets the pending frame to the paper edges found near it. Synchronous
+   * (well under 200 ms at 800 px), so no busy overlay. The detection ignores
+   * pending corner offsets and replaces them.
+   */
+  private autoDetect(): void {
+    const capture = this.capture;
+    const pending = this.pending;
+    if (!capture || !pending || this.drag) return;
+    let detected: Frame | null;
+    try {
+      const layout = frameWorkingLayout(withoutCorners(pending));
+      const working = sampleImage(capture.image, layout.transform, layout.width, layout.height);
+      detected = detectFrame(working, layout, pending, capture.image.width);
+    } catch {
+      detected = null;
+    }
+    if (!detected) {
+      this.callbacks.onNotice();
+      return;
+    }
+    this.pending = detected;
     this.layout();
   }
 

@@ -333,6 +333,7 @@ export class App {
     this.editor = new CropRotateView({
       onCancel: () => void this.closeEditor(null),
       onConfirm: (frame) => void this.closeEditor(frame),
+      onNotice: () => this.showNotice(),
     });
 
     // Brightness/contrast
@@ -340,6 +341,7 @@ export class App {
       {
         onCancel: () => void this.closeToneView(null),
         onConfirm: (tone) => void this.closeToneView(tone),
+        onNotice: () => this.showNotice(),
       },
       PREVIEW_MAX_LONG_SIDE,
     );

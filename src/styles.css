@@ -505,19 +505,28 @@ button {
 }
 
 .button-bar-compact {
-  gap: 8px;
+  gap: 4px;
   justify-content: space-between;
+  padding-left: calc(12px + var(--safe-left));
+  padding-right: calc(12px + var(--safe-right));
 }
 
-/* Two segments plus three compact buttons: 3 x 52 px buttons, 107 px
-   control, 3 x 8 px gaps = 287 px. Nothing may shrink, or the circular
-   buttons turn into ellipses. */
+/* Seven 44 px targets per edit bar (v0.8) on a 360 px viewport, 336 px
+   between the paddings: crop/rotate 4 x 44 px buttons + 99 px control +
+   4 x 4 px gaps = 291 px; tone 4 x 44 px buttons + 141 px control + 16 px
+   = 333 px. Nothing may shrink, or the circular buttons turn into
+   ellipses. */
 .button-bar-compact > * {
   flex: none;
 }
 
+.button-bar-compact .icon-button.compact {
+  width: 44px;
+  height: 44px;
+}
+
 .segmented-modes button {
-  width: 48px;
+  width: 44px;
   height: 44px;
 }
 
@@ -688,7 +697,11 @@ button {
   overflow: hidden;
 }
 
-/* Three segments plus the grayscale toggle must fit a 360 px wide bar. */
+/* Three segments, the grayscale toggle and the wand must fit a 360 px wide bar. */
+.segmented-tone {
+  padding: 3px;
+}
+
 .segmented-tone button {
   width: 44px;
 }

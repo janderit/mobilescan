@@ -198,7 +198,7 @@ describe('CropRotateView loupes', () => {
 
   beforeEach(() => {
     stub = stubCanvas();
-    view = new CropRotateView({ onCancel: () => {}, onConfirm: () => {} });
+    view = new CropRotateView({ onCancel: () => {}, onConfirm: () => {}, onNotice: () => {} });
     document.body.append(view.element);
     stage = view.element.querySelector<HTMLElement>('.edit-stage')!;
     Object.defineProperty(stage, 'clientWidth', { value: VIEW_W, configurable: true });

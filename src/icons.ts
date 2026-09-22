@@ -71,3 +71,6 @@ export const chevronRight =
 
 export const shear =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><title>Shear mode (independent corners)</title><path d="M5 7l14-4v18L5 17z"/><circle cx="5" cy="7" r="1.6" fill="currentColor"/><circle cx="19" cy="3" r="1.6" fill="currentColor"/><circle cx="19" cy="21" r="1.6" fill="currentColor"/><circle cx="5" cy="17" r="1.6" fill="currentColor"/></svg>';
+
+export const magicWand =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><title>Auto-detect</title><path d="M3 21l11-11"/><path d="M14 10l-2-2 2-2 2 2z" fill="currentColor"/><path d="M17 3v4M15 5h4M20 12v3M18.5 13.5h3M9 2v2M8 3h2"/></svg>';

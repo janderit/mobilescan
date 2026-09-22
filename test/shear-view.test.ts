@@ -65,6 +65,7 @@ describe('corner shear and edge crop in the crop/rotate view', () => {
       onConfirm: (f) => {
         confirmed = f;
       },
+      onNotice: () => {},
     });
     document.body.append(view.element);
     stage = view.element.querySelector<HTMLElement>('.edit-stage')!;

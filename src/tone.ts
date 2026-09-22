@@ -16,7 +16,7 @@
 export interface Tone {
   /** 0.5 .. 1.5, neutral 1 */
   brightness: number;
-  /** 0.5 .. 2.0, neutral 1 */
+  /** 0.5 .. 4.0, neutral 1 (widened from 2.0 in v0.8 so auto can reach full black and white) */
   contrast: number;
   /** -1 (cool) .. 1 (warm), neutral 0 */
   temperature: number;
@@ -38,7 +38,7 @@ export interface ToneRange {
 
 export const TONE_RANGES: Record<ToneKey, ToneRange> = {
   brightness: { min: 0.5, max: 1.5, neutral: 1, step: 0.01 },
-  contrast: { min: 0.5, max: 2, neutral: 1, step: 0.01 },
+  contrast: { min: 0.5, max: 4, neutral: 1, step: 0.01 },
   temperature: { min: -1, max: 1, neutral: 0, step: 0.02 },
 };
 
@@ -69,10 +69,29 @@ export function clampTone(key: ToneKey, value: number): number {
   return Math.abs(clamped - range.neutral) < range.step / 2 ? range.neutral : clamped;
 }
 
-/** Position of a value in its range as a fraction 0..1 (for the slider tick and fill). */
+/**
+ * Position of a value in its range as a fraction 0..1 (the slider position,
+ * tick and fill). Piecewise-linear with neutral at the centre (v0.8), so the
+ * asymmetric contrast range keeps its tick in the middle.
+ */
 export function toneFraction(key: ToneKey, value: number): number {
   const range = TONE_RANGES[key];
-  return (value - range.min) / (range.max - range.min);
+  const v = Math.min(range.max, Math.max(range.min, value));
+  return v <= range.neutral
+    ? (0.5 * (v - range.min)) / (range.neutral - range.min)
+    : 0.5 + (0.5 * (v - range.neutral)) / (range.max - range.neutral);
+}
+
+/** Inverse of `toneFraction`: the value at a slider position 0..1, snapped to the range's step. */
+export function toneFromFraction(key: ToneKey, fraction: number): number {
+  const range = TONE_RANGES[key];
+  const f = Math.min(1, Math.max(0, fraction));
+  const raw =
+    f <= 0.5
+      ? range.min + (f / 0.5) * (range.neutral - range.min)
+      : range.neutral + ((f - 0.5) / 0.5) * (range.max - range.neutral);
+  const stepped = Math.round(raw / range.step) * range.step;
+  return clampTone(key, Number(stepped.toFixed(6)));
 }
 
 /** Per-channel gains of the temperature step. */

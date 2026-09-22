@@ -7,11 +7,19 @@
  * slider costs no pixel work. The temperature step is an inline SVG
  * feColorMatrix referenced by url(); its values are updated while dragging.
  * The caller bakes the values on confirm.
+ *
+ * The native range input runs a linear 0..1000 scale; `toneFraction` and its
+ * inverse map it to the selected value with neutral at the centre (v0.8).
+ *
+ * Auto (v0.8): the wand button measures the paper background and the print
+ * in the frame region (`detect.ts`) and sets grayscale, brightness and
+ * contrast so the page becomes black on white, as a pending edit.
  */
 
 import * as icons from './icons';
 import type { Capture } from './model';
-import { releaseCanvas } from './canvas';
+import { releaseCanvas, sampleImage } from './canvas';
+import { detectTone, toneWorkingLayout } from './detect';
 import { renderFrame } from './share';
 import {
   NEUTRAL_TONE,
@@ -21,6 +29,7 @@ import {
   temperatureMatrix,
   toneFilter,
   toneFraction,
+  toneFromFraction,
   type Tone,
   type ToneKey,
 } from './tone';
@@ -31,6 +40,8 @@ export interface ToneViewCallbacks {
   onCancel(): void;
   /** Confirm with the pending values (may be neutral: the caller then leaves the image alone). */
   onConfirm(tone: Tone): void;
+  /** Auto-detect could not measure the page: show the brief warning notice. */
+  onNotice(): void;
 }
 
 const KEY_ICONS: Record<ToneKey, string> = {
@@ -46,6 +57,8 @@ const KEY_LABELS: Record<ToneKey, string> = {
 };
 
 const TEMPERATURE_FILTER_ID = 'tone-temperature';
+/** Resolution of the native range input (linear; the value mapping is piecewise). */
+const SLIDER_STEPS = 1000;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export class ToneView {
@@ -58,6 +71,7 @@ export class ToneView {
   private readonly grayscaleButton: HTMLButtonElement;
   private readonly temperatureMatrixEl: SVGFEColorMatrixElement;
 
+  private capture: Capture | null = null;
   private tone: Tone = { ...NEUTRAL_TONE };
   private key: ToneKey = 'brightness';
   private open_ = false;
@@ -88,6 +102,9 @@ export class ToneView {
     this.slider = document.createElement('input');
     this.slider.type = 'range';
     this.slider.className = 'tone-slider';
+    this.slider.min = '0';
+    this.slider.max = String(SLIDER_STEPS);
+    this.slider.step = '1';
     this.slider.addEventListener('input', () => this.onSliderInput());
     this.sliderWrap = document.createElement('div');
     this.sliderWrap.className = 'tone-slider-wrap';
@@ -110,12 +127,15 @@ export class ToneView {
     this.grayscaleButton = iconButton(icons.grayscale, 'Schwarzweiß', 'compact');
     this.grayscaleButton.addEventListener('click', () => this.toggleGrayscale());
 
+    const auto = iconButton(icons.magicWand, 'Automatisch anpassen', 'compact');
+    auto.addEventListener('click', () => this.autoDetect());
+
     const confirm = iconButton(icons.check, 'Bestätigen', 'primary compact');
     confirm.addEventListener('click', () => this.confirm());
 
     const bar = document.createElement('div');
     bar.className = 'button-bar button-bar-compact';
-    bar.append(back, segmented, this.grayscaleButton, confirm);
+    bar.append(back, segmented, this.grayscaleButton, auto, confirm);
 
     this.element = document.createElement('section');
     this.element.className = 'screen screen-tone';
@@ -125,6 +145,7 @@ export class ToneView {
 
   /** Shows the frame region of the capture with neutral values, brightness selected. */
   open(capture: Capture): void {
+    this.capture = capture;
     this.tone = { ...NEUTRAL_TONE };
     this.key = 'brightness';
     this.open_ = true;
@@ -140,6 +161,7 @@ export class ToneView {
   /** Hides the view and drops the display copy. Never touches the capture. */
   close(): void {
     this.open_ = false;
+    this.capture = null;
     this.element.hidden = true;
     this.canvas.style.filter = '';
     releaseCanvas(this.canvas);
@@ -154,8 +176,31 @@ export class ToneView {
 
   private onSliderInput(): void {
     if (!this.open_) return;
-    this.tone = { ...this.tone, [this.key]: clampTone(this.key, this.slider.valueAsNumber) };
+    const value = toneFromFraction(this.key, this.slider.valueAsNumber / SLIDER_STEPS);
+    this.tone = { ...this.tone, [this.key]: clampTone(this.key, value) };
     this.renderPreview();
+  }
+
+  /**
+   * Measures the source image (not the preview, so a second tap gives the
+   * same result) and sets the pending values to black on white.
+   */
+  private autoDetect(): void {
+    const capture = this.capture;
+    if (!this.open_ || !capture) return;
+    let tone: Tone | null;
+    try {
+      const layout = toneWorkingLayout(capture.frame);
+      tone = detectTone(sampleImage(capture.image, layout.transform, layout.width, layout.height));
+    } catch {
+      tone = null;
+    }
+    if (!tone) {
+      this.callbacks.onNotice();
+      return;
+    }
+    this.tone = tone;
+    this.renderKey();
   }
 
   private toggleGrayscale(): void {
@@ -181,11 +226,11 @@ export class ToneView {
       this.keyButtons[key].setAttribute('aria-checked', String(key === this.key));
     }
     const range = TONE_RANGES[this.key];
-    this.slider.min = String(range.min);
-    this.slider.max = String(range.max);
-    this.slider.step = String(range.step);
-    this.slider.value = String(this.tone[this.key]);
+    this.slider.value = String(Math.round(toneFraction(this.key, this.tone[this.key]) * SLIDER_STEPS));
     this.slider.setAttribute('aria-label', KEY_LABELS[this.key]);
+    this.slider.setAttribute('aria-valuemin', String(range.min));
+    this.slider.setAttribute('aria-valuemax', String(range.max));
+    this.slider.setAttribute('aria-valuenow', String(this.tone[this.key]));
     this.sliderWrap.style.setProperty('--tick', `${toneFraction(this.key, range.neutral) * 100}%`);
     this.renderPreview();
   }
@@ -197,5 +242,6 @@ export class ToneView {
     this.grayscaleButton.classList.toggle('primary', this.tone.grayscale);
     const fill = toneFraction(this.key, this.tone[this.key]) * 100;
     this.sliderWrap.style.setProperty('--fill', `${fill}%`);
+    this.slider.setAttribute('aria-valuenow', String(this.tone[this.key]));
   }
 }
