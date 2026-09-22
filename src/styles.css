@@ -233,11 +233,12 @@ button {
   width: 80px;
   height: 80px;
   border-color: var(--muted);
+  color: var(--primary);
 }
 
 .camera-shutter svg {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
 }
 
 /* Shutter flash */
