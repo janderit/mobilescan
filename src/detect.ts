@@ -20,6 +20,11 @@
  * region, reads the paper background (the mode above 0.4) and the print (the
  * 1st percentile), and solves the v0.3 filter chain so that the background
  * maps to white and the print to black.
+ *
+ * Live detection (v0.10) runs the same edge search on the camera video with
+ * a strict rule (`detectFrameStrict`: all four edges, no clamped rotation)
+ * and a `DetectionTracker` that demands agreeing runs before a document
+ * counts as found and tolerates single misses before it is lost.
  */
 
 import type { Frame, Point } from './model';
@@ -27,6 +32,7 @@ import {
   baseAngle,
   clampSkew,
   invertAffine,
+  MAX_SKEW,
   MIN_FRAME_FRACTION,
   normalizeAngle,
   quadValid,
@@ -358,6 +364,11 @@ const direction = (a: Point, b: Point): number => Math.atan2(b.y - a.y, b.x - a.
  * at the centroid, and the residual per corner as its offset (v0.7).
  */
 export function frameFromCorners(corners: Quad, current: Frame): Frame {
+  return frameFromCornersDetailed(corners, current).frame;
+}
+
+/** `frameFromCorners` plus whether the rotation had to be clamped to the skew range. */
+export function frameFromCornersDetailed(corners: Quad, current: Frame): { frame: Frame; clamped: boolean } {
   const [nw, ne, se, sw] = corners;
   const width = (length(nw, ne) + length(sw, se)) / 2;
   const height = (length(nw, sw) + length(ne, se)) / 2;
@@ -369,7 +380,10 @@ export function frameFromCorners(corners: Quad, current: Frame): Frame {
       ? [relative(nw, sw, current.angle + Math.PI / 2), relative(ne, se, current.angle + Math.PI / 2)]
       : [relative(nw, ne, current.angle), relative(sw, se, current.angle)];
   const skew = (longEdges[0]! + longEdges[1]!) / 2;
-  const angle = clampSkew(current.angle + skew, baseAngle(current.angle));
+  const base = baseAngle(current.angle);
+  const wanted = current.angle + skew;
+  const angle = clampSkew(wanted, base);
+  const clamped = Math.abs(normalizeAngle(wanted - base)) > MAX_SKEW + 1e-9;
   const rect: Frame = {
     cx: (nw.x + ne.x + se.x + sw.x) / 4,
     cy: (nw.y + ne.y + se.y + sw.y) / 4,
@@ -384,32 +398,151 @@ export function frameFromCorners(corners: Quad, current: Frame): Frame {
     return Math.hypot(offset.x, offset.y) < MIN_CORNER_OFFSET ? { x: 0, y: 0 } : offset;
   }) as Quad;
   if (offsets.some((p) => p.x !== 0 || p.y !== 0)) rect.corners = offsets;
-  return rect;
+  return { frame: rect, clamped };
+}
+
+/** Outcome of a frame detection with the details the strict rule needs. */
+export interface FrameDetection {
+  /** The frame, or null when no edge was found or the result is not usable. */
+  frame: Frame | null;
+  /** Number of edges found (0..4); unfound edges kept the current frame edge. */
+  found: number;
+  /** True when the detected rotation exceeded the skew range and was clamped. */
+  clamped: boolean;
 }
 
 /**
  * The whole frame detection: working image -> edges -> corners in image
- * coordinates -> frame. Null when no edge was found or the result is not a
- * usable frame (too small, or not convex).
+ * coordinates -> frame, with the number of edges found and whether the
+ * rotation was clamped. `frame` is null when no edge was found or the result
+ * is not a usable frame (too small, or not convex).
  */
+export function detectFrameDetailed(
+  working: ImageData,
+  layout: WorkingLayout,
+  current: Frame,
+  imageWidth: number,
+): FrameDetection {
+  const edges = detectEdges(luminanceOf(working), layout.frame);
+  if (edges.found === 0) return { frame: null, found: 0, clamped: false };
+  const back = invertAffine(layout.transform);
+  const corners = edges.corners.map((p) => ({
+    x: back.a * p.x + back.c * p.y + back.e,
+    y: back.b * p.x + back.d * p.y + back.f,
+  })) as Quad;
+  const { frame, clamped } = frameFromCornersDetailed(corners, current);
+  const minSide = MIN_FRAME_FRACTION * imageWidth;
+  if (!(frame.width >= minSide) || !(frame.height >= minSide)) return { frame: null, found: edges.found, clamped };
+  if (!quadValid(frame, imageWidth)) return { frame: null, found: edges.found, clamped };
+  return { frame, found: edges.found, clamped };
+}
+
+/** The wand's detection (v0.8): partial results are applied. */
 export function detectFrame(
   working: ImageData,
   layout: WorkingLayout,
   current: Frame,
   imageWidth: number,
 ): Frame | null {
-  const edges = detectEdges(luminanceOf(working), layout.frame);
-  if (edges.found === 0) return null;
-  const back = invertAffine(layout.transform);
-  const corners = edges.corners.map((p) => ({
-    x: back.a * p.x + back.c * p.y + back.e,
-    y: back.b * p.x + back.d * p.y + back.f,
+  return detectFrameDetailed(working, layout, current, imageWidth).frame;
+}
+
+/**
+ * The live detection's rule (v0.10): all four edges found and the rotation
+ * inside the skew range, otherwise there is no document.
+ */
+export function detectFrameStrict(
+  working: ImageData,
+  layout: WorkingLayout,
+  current: Frame,
+  imageWidth: number,
+): Frame | null {
+  const result = detectFrameDetailed(working, layout, current, imageWidth);
+  if (result.found < 4 || result.clamped) return null;
+  return result.frame;
+}
+
+// ---- live detection tracker (v0.10) --------------------------------------
+
+/** Agreeing runs in a row before a document counts as found. */
+export const HITS_TO_FIND = 3;
+/** Misses in a row before a found document is lost. */
+export const MISSES_TO_LOSE = 2;
+/** Two runs agree when no corner moved more than this fraction of the frame width. */
+export const AGREE_FRACTION = 0.01;
+/** Weight of the newest run in the smoothed corners. */
+export const SMOOTHING = 0.5;
+
+export interface TrackerState {
+  /** True while a document counts as found. */
+  found: boolean;
+  /** The smoothed corners (nw, ne, se, sw) while found, else null. */
+  corners: Quad | null;
+}
+
+/**
+ * Hysteresis and smoothing over successive detection runs: a hit that agrees
+ * with the previous run counts towards `HITS_TO_FIND`; a run without a hit,
+ * or a hit that disagrees, counts towards `MISSES_TO_LOSE`. The corners
+ * reported while found are smoothed exponentially and reset on loss.
+ */
+export class DetectionTracker {
+  private previous: Quad | null = null;
+  private hits = 0;
+  private misses = 0;
+  private found = false;
+  private smoothed: Quad | null = null;
+
+  /** `tolerance` in the corners' pixel unit; `AGREE_FRACTION` of the frame width. */
+  constructor(private readonly tolerance: number) {}
+
+  /** Feeds one run: the detected frame's corners, or null for no document. */
+  push(quad: Quad | null): TrackerState {
+    const agrees = quad !== null && this.previous !== null && quadsAgree(quad, this.previous, this.tolerance);
+    // A miss keeps the last hit, so a hit after a single miss can still agree with it.
+    if (quad !== null) this.previous = quad;
+    this.hits = quad === null ? 0 : agrees ? this.hits + 1 : 1;
+    if (agrees) {
+      this.misses = 0;
+      if (this.hits >= HITS_TO_FIND) this.found = true;
+    } else {
+      this.misses += 1;
+      if (this.misses >= MISSES_TO_LOSE) {
+        this.found = false;
+        this.smoothed = null;
+      }
+    }
+    if (this.found && quad !== null && agrees) {
+      this.smoothed = this.smoothed ? lerpQuad(this.smoothed, quad, SMOOTHING) : quad;
+    }
+    return this.state();
+  }
+
+  state(): TrackerState {
+    return { found: this.found, corners: this.found ? this.smoothed : null };
+  }
+
+  reset(): void {
+    this.previous = null;
+    this.hits = 0;
+    this.misses = 0;
+    this.found = false;
+    this.smoothed = null;
+  }
+}
+
+function quadsAgree(a: Quad, b: Quad, tolerance: number): boolean {
+  for (let i = 0; i < 4; i += 1) {
+    if (Math.hypot(a[i]!.x - b[i]!.x, a[i]!.y - b[i]!.y) > tolerance) return false;
+  }
+  return true;
+}
+
+function lerpQuad(from: Quad, to: Quad, t: number): Quad {
+  return from.map((p, i) => ({
+    x: p.x + (to[i]!.x - p.x) * t,
+    y: p.y + (to[i]!.y - p.y) * t,
   })) as Quad;
-  const frame = frameFromCorners(corners, current);
-  const minSide = MIN_FRAME_FRACTION * imageWidth;
-  if (!(frame.width >= minSide) || !(frame.height >= minSide)) return null;
-  if (!quadValid(frame, imageWidth)) return null;
-  return frame;
 }
 
 // ---- tone -----------------------------------------------------------------

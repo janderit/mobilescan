@@ -3,6 +3,7 @@
   --ink: #111827;
   --camera-bg: #111827;
   --frame: #facc15;
+  --frame-found: #22c55e;
   --border: #d1d5db;
   --muted: #9ca3af;
   --surface: #ffffff;
@@ -207,9 +208,53 @@ button {
 
 .camera-frame {
   position: absolute;
-  border: 3px dashed var(--frame);
-  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.3);
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  overflow: visible;
+}
+
+.camera-frame[hidden] {
+  display: none;
+}
+
+.camera-shade {
+  fill: rgba(0, 0, 0, 0.3);
+}
+
+/* The outline: the static DIN rectangle, or the detected document (v0.10) in green. */
+.camera-outline {
+  fill: none;
+  stroke: var(--frame);
+  stroke-width: 3;
+  stroke-dasharray: 10 8;
+  stroke-linejoin: round;
+  transition: stroke var(--fade) ease-out;
+}
+
+.camera-frame.found .camera-outline {
+  stroke: var(--frame-found);
+}
+
+/* Live detection toggle (v0.10): right of the shutter, on its row. */
+.camera-detect {
+  position: absolute;
+  bottom: calc(40px + var(--safe-bottom));
+  left: calc(50% + 72px);
+  width: 48px;
+  height: 48px;
+}
+
+.camera-detect svg {
+  width: 24px;
+  height: 24px;
+}
+
+.camera-detect[aria-pressed='true'] {
+  background: var(--frame-found);
+  border-color: var(--frame-found);
+  color: #111827;
 }
 
 .camera-back {
@@ -687,6 +732,10 @@ button {
   .notice,
   .flash.active {
     animation: none;
+  }
+
+  .camera-outline {
+    transition: none;
   }
 }
 

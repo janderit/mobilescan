@@ -1,5 +1,14 @@
 /** Small DOM helpers shared by the views. */
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** An SVG element with the given attributes. */
+export function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string> = {}): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  return node;
+}
+
 export function iconButton(icon: string, label: string, className = ''): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';

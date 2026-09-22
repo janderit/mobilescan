@@ -1,0 +1,122 @@
+/**
+ * Live document detection on the camera view (v0.10): runs the v0.8 edge
+ * search on the video element a few times per second, from the static camera
+ * frame, feeds a `DetectionTracker` and reports its state. Pure scheduling
+ * and glue; the maths lives in detect.ts, the rendering in canvas.ts.
+ */
+
+import { sampleImage } from './canvas';
+import { AGREE_FRACTION, DetectionTracker, detectFrameStrict, frameWorkingLayout, type TrackerState } from './detect';
+import { quadCorners } from './geometry';
+import type { Frame } from './model';
+
+/** Minimum time between the starts of two runs. */
+export const RUN_INTERVAL_MS = 150;
+
+type FrameCallbackVideo = HTMLVideoElement & {
+  requestVideoFrameCallback?: (callback: () => void) => number;
+  cancelVideoFrameCallback?: (handle: number) => void;
+};
+
+export interface LiveDetectorOptions {
+  /** Called after every run with the tracker's state. */
+  onResult: (state: TrackerState) => void;
+  /** Time source, for tests. */
+  now?: () => number;
+  /** The detection on one working copy, for tests. */
+  detect?: typeof detectFrameStrict;
+}
+
+export class LiveDetector {
+  private readonly video: FrameCallbackVideo;
+  private readonly now: () => number;
+  private readonly detect: typeof detectFrameStrict;
+  private tracker: DetectionTracker | null = null;
+  private frame: Frame | null = null;
+  private imageWidth = 0;
+  private lastRun = Number.NEGATIVE_INFINITY;
+  private handle: number | null = null;
+  private usesVideoFrames = false;
+
+  constructor(
+    video: HTMLVideoElement,
+    private readonly options: LiveDetectorOptions,
+  ) {
+    this.video = video;
+    this.now = options.now ?? (() => performance.now());
+    this.detect = options.detect ?? detectFrameStrict;
+  }
+
+  /** True while runs are scheduled. */
+  get running(): boolean {
+    return this.handle !== null;
+  }
+
+  /** The tracker's current state. */
+  get state(): TrackerState {
+    return this.tracker?.state() ?? { found: false, corners: null };
+  }
+
+  /**
+   * Starts (or restarts, with an empty tracker) detecting the given static
+   * frame in the video's intrinsic pixels.
+   */
+  start(frame: Frame, imageWidth: number): void {
+    this.stop();
+    this.frame = frame;
+    this.imageWidth = imageWidth;
+    this.tracker = new DetectionTracker(AGREE_FRACTION * frame.width);
+    this.lastRun = Number.NEGATIVE_INFINITY;
+    this.schedule();
+  }
+
+  /** Stops the runs and forgets the tracker state. */
+  stop(): void {
+    if (this.handle !== null) {
+      if (this.usesVideoFrames) this.video.cancelVideoFrameCallback?.(this.handle);
+      else cancelAnimationFrame(this.handle);
+      this.handle = null;
+    }
+    this.tracker = null;
+    this.frame = null;
+  }
+
+  private schedule(): void {
+    if (typeof this.video.requestVideoFrameCallback === 'function') {
+      this.usesVideoFrames = true;
+      this.handle = this.video.requestVideoFrameCallback(() => this.tick());
+    } else if (typeof requestAnimationFrame === 'function') {
+      this.usesVideoFrames = false;
+      this.handle = requestAnimationFrame(() => this.tick());
+    } else {
+      this.handle = null;
+    }
+  }
+
+  private tick(): void {
+    this.handle = null;
+    if (!this.tracker || !this.frame) return;
+    const now = this.now();
+    if (now - this.lastRun >= RUN_INTERVAL_MS) {
+      this.lastRun = now;
+      this.options.onResult(this.run());
+    }
+    this.schedule();
+  }
+
+  /** One detection run on the current video frame. */
+  run(): TrackerState {
+    if (!this.tracker || !this.frame) return this.state;
+    let corners = null;
+    try {
+      const layout = frameWorkingLayout(this.frame);
+      const working = sampleImage(this.video, layout.transform, layout.width, layout.height);
+      const detected = this.detect(working, layout, this.frame, this.imageWidth);
+      corners = detected ? quadCorners(detected) : null;
+    } catch (error) {
+      // A run that fails (canvas memory, detached stream) is a miss; the loop goes on.
+      console.error('Live-Erkennung fehlgeschlagen', error);
+    }
+    return this.tracker.push(corners);
+  }
+}

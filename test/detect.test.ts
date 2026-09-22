@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGREE_FRACTION,
   BAND_INSIDE,
+  DetectionTracker,
   detectEdges,
   detectFrame,
+  detectFrameDetailed,
+  detectFrameStrict,
   detectTone,
   frameFromCorners,
   frameWorkingLayout,
@@ -264,6 +268,122 @@ describe('frame detection', () => {
     quadCorners(found!).forEach((corner, i) => {
       expect(distance(corner, truth[i]!)).toBeLessThan(2);
     });
+  });
+});
+
+describe('strict detection (v0.10)', () => {
+  const paper: Frame = { cx: 600, cy: 800, width: 900, height: 1250, angle: 0 };
+  const around: Frame = { cx: 600, cy: 800, width: 954, height: 1325, angle: 0 };
+
+  function strict(frame: Frame, scene: Scene): Frame | null {
+    const layout = frameWorkingLayout(frame);
+    return detectFrameStrict(renderWorking(layout, scene), layout, frame, IMAGE_W);
+  }
+
+  it('accepts a paper with all four edges found', () => {
+    const found = strict(around, paperScene(paper));
+    expect(found).not.toBeNull();
+    const truth = quadCorners(paper);
+    quadCorners(found!).forEach((corner, i) => {
+      expect(distance(corner, truth[i]!)).toBeLessThan(2);
+    });
+  });
+
+  it('rejects a partial result that the wand would apply (one edge found)', () => {
+    const scene: Scene = (p) => (insideImage(p) ? (p.y < 300 ? 0.2 : 0.8) : null);
+    const frame: Frame = { cx: 600, cy: 900, width: 1000, height: 1300, angle: 0 };
+    const layout = frameWorkingLayout(frame);
+    const working = renderWorking(layout, scene);
+    const detailed = detectFrameDetailed(working, layout, frame, IMAGE_W);
+    expect(detailed.found).toBe(1);
+    expect(detailed.frame).not.toBeNull();
+    expect(detectFrameStrict(working, layout, frame, IMAGE_W)).toBeNull();
+  });
+
+  it('rejects a paper tilted beyond the skew range, which the wand clamps', () => {
+    const tilted: Frame = { ...paper, width: 800, height: 1100, angle: (20 * Math.PI) / 180 };
+    const frame: Frame = { cx: 600, cy: 800, width: 1000, height: 1300, angle: 0 };
+    const layout = frameWorkingLayout(frame);
+    const working = renderWorking(layout, paperScene(tilted));
+    const detailed = detectFrameDetailed(working, layout, frame, IMAGE_W);
+    expect(detailed.found).toBe(4);
+    expect(detailed.clamped).toBe(true);
+    expect(detectFrameStrict(working, layout, frame, IMAGE_W)).toBeNull();
+    // A 5° tilt is inside the range and passes.
+    const slight: Frame = { ...paper, angle: (5 * Math.PI) / 180 };
+    expect(strict(around, paperScene(slight))).not.toBeNull();
+  });
+
+  it('reports nothing found on a uniform image', () => {
+    expect(strict(around, (p) => (insideImage(p) ? 0.5 : null))).toBeNull();
+  });
+});
+
+describe('detection tracker (v0.10)', () => {
+  const frameWidth = 1000;
+  const quad = (dx = 0, dy = 0): Quad => [
+    { x: 100 + dx, y: 100 + dy },
+    { x: 900 + dx, y: 110 + dy },
+    { x: 910 + dx, y: 1300 + dy },
+    { x: 90 + dx, y: 1290 + dy },
+  ];
+
+  function tracker(): DetectionTracker {
+    return new DetectionTracker(AGREE_FRACTION * frameWidth);
+  }
+
+  it('reports found only after three agreeing hits in a row', () => {
+    const t = tracker();
+    expect(t.push(quad()).found).toBe(false);
+    expect(t.push(quad(1, 1)).found).toBe(false);
+    const third = t.push(quad(2, 0));
+    expect(third.found).toBe(true);
+    expect(third.corners).not.toBeNull();
+    expect(third.corners![0]!.x).toBeCloseTo(102, 6);
+  });
+
+  it('keeps found over a single miss and drops it after two', () => {
+    const t = tracker();
+    t.push(quad());
+    t.push(quad());
+    expect(t.push(quad()).found).toBe(true);
+    expect(t.push(null).found).toBe(true);
+    expect(t.push(quad()).found).toBe(true);
+    expect(t.push(null).found).toBe(true);
+    const lost = t.push(null);
+    expect(lost.found).toBe(false);
+    expect(lost.corners).toBeNull();
+  });
+
+  it('treats a hit whose corner moved 2 % of the frame width as a miss', () => {
+    const t = tracker();
+    t.push(quad());
+    t.push(quad());
+    expect(t.push(quad()).found).toBe(true);
+    expect(t.push(quad(20, 0)).found).toBe(true); // first miss
+    expect(t.push(quad(40, 0)).found).toBe(false); // second miss: lost
+    // Two more agreeing runs with the new position, three hits in all: found again.
+    expect(t.push(quad(41, 0)).found).toBe(false);
+    expect(t.push(quad(42, 0)).found).toBe(true);
+  });
+
+  it('smooths the corners with half weight on the newest run', () => {
+    const t = tracker();
+    t.push(quad());
+    t.push(quad());
+    t.push(quad());
+    const state = t.push(quad(8, 0));
+    expect(state.corners![0]!.x).toBeCloseTo(104, 6);
+  });
+
+  it('starts over after reset', () => {
+    const t = tracker();
+    t.push(quad());
+    t.push(quad());
+    t.push(quad());
+    t.reset();
+    expect(t.state().found).toBe(false);
+    expect(t.push(quad()).found).toBe(false);
   });
 });
 

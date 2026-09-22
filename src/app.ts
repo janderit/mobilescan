@@ -9,9 +9,19 @@
 
 import * as icons from './icons';
 import { MAX_PAGES, type Capture, type CompressionLevel, type Page } from './model';
-import { afterPaint, iconButton, prefersReducedMotion } from './ui';
-import { coverTransform, frameToViewRect, hasCornerOffsets, initialFrame, scaleFrame, visibleImageRect } from './geometry';
-import type { Frame } from './model';
+import { afterPaint, iconButton, prefersReducedMotion, svgEl } from './ui';
+import {
+  coverTransform,
+  frameToViewRect,
+  hasCornerOffsets,
+  initialFrame,
+  scaleFrame,
+  visibleImageRect,
+  withoutCorners,
+  type CoverTransform,
+  type Quad,
+} from './geometry';
+import type { Frame, Point } from './model';
 import { COMPRESSION_LEVELS, DEFAULT_COMPRESSION } from './quality';
 import {
   cameraErrorKind,
@@ -32,6 +42,9 @@ import { BackTrap } from './navigation';
 import { swipeDirection } from './swipe';
 import { FrameStage } from './frame-stage';
 import type { ZoomState } from './zoom';
+import { detectFrameStrict, frameWorkingLayout, type TrackerState } from './detect';
+import { sampleImage } from './canvas';
+import { LiveDetector } from './live-detect';
 
 export type Screen = 'start' | 'camera' | 'error' | 'captured' | 'edit' | 'tone';
 
@@ -46,6 +59,8 @@ interface State {
   level: CompressionLevel;
   cameraError: CameraErrorKind;
   cameraOrigin: CameraOrigin;
+  /** v0.10: live document detection and auto-bake on capture; session state only. */
+  liveDetect: boolean;
 }
 
 /** Cross-fade between screens; must match `--fade` in styles.css. */
@@ -53,6 +68,9 @@ export const FADE_MS = 150;
 
 /** How long the icon-only error notice stays on screen. */
 export const NOTICE_MS = 2000;
+
+/** Vibration when the live outline turns green (the shutter uses 30 ms). */
+const FOUND_VIBRATION_MS = 15;
 
 const LEVEL_ICONS: Record<CompressionLevel, string> = {
   small: icons.fileSmall,
@@ -83,6 +101,26 @@ export const CAMERA_ERROR_LABELS: Record<CameraErrorKind, string> = {
 function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
   button.setAttribute('aria-disabled', String(disabled));
   button.disabled = disabled;
+}
+
+function sameFrame(a: Frame, b: Frame): boolean {
+  return a.cx === b.cx && a.cy === b.cy && a.width === b.width && a.height === b.height && a.angle === b.angle;
+}
+
+/**
+ * v0.10: the strict detection on the still, from the static frame. Null when
+ * no document is found or the detection fails; the capture then keeps the
+ * static frame. Runs synchronously (about 0.5 MP of work).
+ */
+function detectStill(image: HTMLCanvasElement, frame: Frame): Frame | null {
+  try {
+    const layout = frameWorkingLayout(frame);
+    const working = sampleImage(image, layout.transform, layout.width, layout.height);
+    return detectFrameStrict(working, layout, frame, image.width);
+  } catch (error) {
+    console.error('Erkennung fehlgeschlagen', error);
+    return null;
+  }
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -116,6 +154,7 @@ export class App {
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
     cameraOrigin: 'start',
+    liveDetect: true,
   };
 
   /** Pages in capture order; empty outside a scan. */
@@ -125,6 +164,11 @@ export class App {
   private session: CameraSession | null = null;
   /** Frame shown over the live video, in track pixel coordinates. */
   private liveFrame: Frame | null = null;
+  /** Track pixels -> viewport pixels of the camera screen. */
+  private cover: CoverTransform | null = null;
+  /** Live detection (v0.10): the loop and its last state. */
+  private readonly liveDetector: LiveDetector;
+  private liveState: TrackerState = { found: false, corners: null };
 
   // Screens
   private readonly screens: Record<Screen, HTMLElement>;
@@ -134,8 +178,11 @@ export class App {
   // Camera
   private readonly cameraScreen: HTMLElement;
   private readonly video: HTMLVideoElement;
-  private readonly frameOverlay: HTMLElement;
+  private readonly frameOverlay: SVGSVGElement;
+  private readonly frameShade: SVGPathElement;
+  private readonly framePolygon: SVGPolygonElement;
   private readonly shutterButton: HTMLButtonElement;
+  private readonly detectButton: HTMLButtonElement;
   private readonly flash: HTMLElement;
 
   // Camera error
@@ -211,12 +258,19 @@ export class App {
     this.video.playsInline = true;
     this.video.muted = true;
     this.video.setAttribute('playsinline', '');
-    this.frameOverlay = el('div', 'camera-frame');
-    this.frameOverlay.hidden = true;
+    // The frame overlay: a shade with a hole and the dashed outline, which is
+    // the static DIN rectangle or, with a document found (v0.10), its corners.
+    this.frameOverlay = svgEl('svg', { class: 'camera-frame', 'aria-hidden': 'true' });
+    this.frameShade = svgEl('path', { class: 'camera-shade', 'fill-rule': 'evenodd' });
+    this.framePolygon = svgEl('polygon', { class: 'camera-outline' });
+    this.frameOverlay.append(this.frameShade, this.framePolygon);
+    this.frameOverlay.setAttribute('hidden', '');
     const cameraBack = iconButton(icons.arrowLeft, 'Zurück', 'dark camera-back');
     cameraBack.addEventListener('click', () => this.closeCamera());
     this.shutterButton = iconButton(icons.shutter, 'Foto aufnehmen', 'camera-shutter');
-    this.shutterButton.addEventListener('click', () => this.takePhoto());
+    this.shutterButton.addEventListener('click', () => void this.takePhoto());
+    this.detectButton = iconButton(icons.magicWand, 'Dokument automatisch erkennen', 'dark camera-detect');
+    this.detectButton.addEventListener('click', () => this.toggleLiveDetect());
     this.cameraScreen = el(
       'section',
       'screen screen-camera',
@@ -224,7 +278,9 @@ export class App {
       this.frameOverlay,
       cameraBack,
       this.shutterButton,
+      this.detectButton,
     );
+    this.liveDetector = new LiveDetector(this.video, { onResult: (state) => this.onLiveResult(state) });
 
     // Camera error: warning, retry, back. No text.
     this.errorStatus = el('div', 'error-icon');
@@ -462,6 +518,7 @@ export class App {
     this.editButton.classList.toggle('primary', menuOpen);
     this.busyOverlay.hidden = !busy;
     this.errorStatus.setAttribute('aria-label', CAMERA_ERROR_LABELS[cameraError]);
+    this.detectButton.setAttribute('aria-pressed', String(this.state.liveDetect));
     for (const l of COMPRESSION_LEVELS) {
       this.levelButtons[l].setAttribute('aria-checked', String(l === level));
     }
@@ -502,11 +559,15 @@ export class App {
     this.leaveTimers.set(from, timer);
   }
 
-  /** Positions the dashed DIN frame over the video in viewport coordinates. */
+  /**
+   * Computes the static DIN frame over the video (track pixels) and the cover
+   * transform to the viewport, draws the overlay and keeps the live detection
+   * in step with the frame.
+   */
   private layoutFrame(): void {
     const session = this.session;
     if (!session || this.state.screen !== 'camera') {
-      this.frameOverlay.hidden = true;
+      this.frameOverlay.setAttribute('hidden', '');
       return;
     }
     const viewW = this.cameraScreen.clientWidth;
@@ -516,14 +577,69 @@ export class App {
     // crops the sides on tall phones), so the dashes are always fully visible.
     const visible = visibleImageRect(session.width, session.height, viewW, viewH);
     const frame = initialFrame(session.width, session.height, visible);
+    const changed = !this.liveFrame || !sameFrame(this.liveFrame, frame);
     this.liveFrame = frame;
-    const rect = frameToViewRect(frame, coverTransform(session.width, session.height, viewW, viewH));
-    const style = this.frameOverlay.style;
-    style.left = `${rect.x}px`;
-    style.top = `${rect.y}px`;
-    style.width = `${rect.width}px`;
-    style.height = `${rect.height}px`;
-    this.frameOverlay.hidden = false;
+    this.cover = coverTransform(session.width, session.height, viewW, viewH);
+    this.frameOverlay.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
+    this.frameOverlay.removeAttribute('hidden');
+    this.syncLiveDetector(changed);
+    this.renderCameraFrame();
+  }
+
+  /** Draws the shade and the outline: the detected corners while found, else the static frame. */
+  private renderCameraFrame(): void {
+    const frame = this.liveFrame;
+    const cover = this.cover;
+    if (!frame || !cover) return;
+    const toView = (p: Point): Point => ({ x: p.x * cover.scale + cover.offsetX, y: p.y * cover.scale + cover.offsetY });
+    const found = this.state.liveDetect && this.liveState.found && this.liveState.corners !== null;
+    let points: Point[];
+    if (found) {
+      points = (this.liveState.corners as Quad).map(toView);
+    } else {
+      const rect = frameToViewRect(frame, cover);
+      points = [
+        { x: rect.x, y: rect.y },
+        { x: rect.x + rect.width, y: rect.y },
+        { x: rect.x + rect.width, y: rect.y + rect.height },
+        { x: rect.x, y: rect.y + rect.height },
+      ];
+    }
+    const viewW = this.cameraScreen.clientWidth;
+    const viewH = this.cameraScreen.clientHeight;
+    const inner = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    this.framePolygon.setAttribute('points', inner);
+    const outer = `M0 0H${viewW}V${viewH}H0Z`;
+    const hole = `M${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('L')}Z`;
+    this.frameShade.setAttribute('d', outer + hole);
+    this.frameOverlay.classList.toggle('found', found);
+  }
+
+  /** Starts, restarts or stops the live detection to match the screen, the toggle and the frame. */
+  private syncLiveDetector(frameChanged: boolean): void {
+    const wanted = this.session !== null && this.state.screen === 'camera' && this.state.liveDetect && this.liveFrame !== null;
+    if (!wanted) {
+      this.liveDetector.stop();
+      this.liveState = { found: false, corners: null };
+      return;
+    }
+    if (frameChanged || !this.liveDetector.running) {
+      this.liveState = { found: false, corners: null };
+      this.liveDetector.start(this.liveFrame as Frame, (this.session as CameraSession).width);
+    }
+  }
+
+  private onLiveResult(state: TrackerState): void {
+    const wasFound = this.liveState.found;
+    this.liveState = state;
+    if (state.found && !wasFound) this.vibrate(FOUND_VIBRATION_MS);
+    this.renderCameraFrame();
+  }
+
+  private toggleLiveDetect(): void {
+    this.state.liveDetect = !this.state.liveDetect;
+    this.syncLiveDetector(false);
+    this.render();
   }
 
   /** Page navigation above the image; hidden with a single page. */
@@ -714,9 +830,9 @@ export class App {
     this.render();
   }
 
-  private takePhoto(): void {
+  private async takePhoto(): Promise<void> {
     const session = this.session;
-    if (!session) return;
+    if (!session || this.state.busy) return;
     let image: HTMLCanvasElement;
     try {
       image = captureStill(session);
@@ -726,18 +842,35 @@ export class App {
     }
     this.shutterFeedback();
     // The capture canvas may be downscaled (iOS pixel cap): scale the live frame with it.
-    const frame = this.liveFrame
+    const staticFrame = this.liveFrame
       ? scaleFrame(this.liveFrame, image.width / session.width)
       : initialFrame(image.width, image.height);
+    const liveFound = this.state.liveDetect && this.liveState.found;
     this.stopSession();
+    // v0.10: the still is detected once more from the static frame; the live
+    // result is only feedback (the still is grabbed later than the last video frame).
+    const detected = this.state.liveDetect ? detectStill(image, staticFrame) : null;
+    const frame = detected ?? staticFrame;
     // Appended after the last page; the previous current page was parked by [+].
-    this.pages.push(newPage({ image, frame }));
+    const page = newPage({ image, frame });
+    this.pages.push(page);
     this.current = this.pages.length - 1;
     this.renderPreview();
     this.state.screen = 'captured';
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
     this.render();
+    if (detected) {
+      await this.runBusy(() => {
+        applyCapture(page, bakeFrame(asCapture(page), detected));
+      }, 'Entzerren fehlgeschlagen', frameNeedsBake(detected));
+      // A failed bake leaves the image; the page keeps the detected rectangle without offsets.
+      if (hasCornerOffsets(page.frame)) page.frame = withoutCorners(page.frame);
+      this.renderPreview();
+      this.render();
+    } else if (liveFound) {
+      this.showNotice();
+    }
   }
 
   private shutterFeedback(): void {
@@ -746,12 +879,16 @@ export class App {
     // Restart the animation even if the previous one is still running.
     void this.flash.offsetWidth;
     this.flash.classList.add('active');
-    if (typeof navigator.vibrate === 'function') {
-      try {
-        navigator.vibrate(30);
-      } catch {
-        // Not permitted; feedback is optional.
-      }
+    this.vibrate(30);
+  }
+
+  /** Haptic feedback where supported; silent under reduced motion. */
+  private vibrate(ms: number): void {
+    if (prefersReducedMotion() || typeof navigator.vibrate !== 'function') return;
+    try {
+      navigator.vibrate(ms);
+    } catch {
+      // Not permitted; feedback is optional.
     }
   }
 
@@ -974,12 +1111,15 @@ export class App {
   // ---- resources -------------------------------------------------------
 
   private stopSession(): void {
+    this.liveDetector.stop();
+    this.liveState = { found: false, corners: null };
     if (this.session) {
       stopCamera(this.session);
       this.session = null;
     }
     this.liveFrame = null;
-    this.frameOverlay.hidden = true;
+    this.cover = null;
+    this.frameOverlay.setAttribute('hidden', '');
   }
 
   /** Drops every page of the scan; nothing is retained. */

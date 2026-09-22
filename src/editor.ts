@@ -71,7 +71,7 @@ import {
   type Corner,
   type LoupePlacement,
 } from './loupe';
-import { iconButton, segmentButton } from './ui';
+import { iconButton, segmentButton, svgEl } from './ui';
 import { ZoomGesture } from './zoom-gesture';
 import { composeZoom, maxZoomScale, sameZoom, type ZoomState } from './zoom';
 
@@ -93,7 +93,6 @@ const HANDLE_HIT_RADIUS = 22;
 /** Drawn handle radius in CSS pixels. */
 const HANDLE_RADIUS = 9;
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 type Drag =
   | { kind: 'resize'; start: Frame; handle: Handle; startLocal: Point }
@@ -111,12 +110,6 @@ interface LoupeState {
 const FRAME_STROKE = '#facc15';
 const FRAME_LINE_WIDTH = 3;
 const FRAME_DASH = [10, 8];
-
-function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string> = {}): SVGElementTagNameMap[K] {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
-  return node;
-}
 
 const degrees = (radians: number): number => (radians * 180) / Math.PI;
 

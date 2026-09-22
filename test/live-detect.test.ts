@@ -1,0 +1,337 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../src/app';
+import type { CameraSession } from '../src/camera';
+import { LiveDetector, RUN_INTERVAL_MS } from '../src/live-detect';
+import { hasCornerOffsets } from '../src/geometry';
+import type { Frame } from '../src/model';
+import { stubCanvas, type CanvasStub } from './canvas-stub';
+import * as bake from '../src/bake';
+
+vi.mock('../src/camera', async () => {
+  const actual = await vi.importActual<typeof import('../src/camera')>('../src/camera');
+  return { ...actual, startCamera: vi.fn(), stopCamera: vi.fn() };
+});
+
+/**
+ * The stubbed canvas hands back transparent pixels, so the real detection
+ * never finds anything. The hit paths substitute the strict detection.
+ */
+vi.mock('../src/detect', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/detect')>();
+  return { ...original, detectFrameStrict: vi.fn(original.detectFrameStrict) };
+});
+
+vi.mock('../src/bake', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/bake')>();
+  return { ...original, bakeFrame: vi.fn(original.bakeFrame) };
+});
+
+import { startCamera } from '../src/camera';
+import { detectFrameStrict } from '../src/detect';
+
+const startCameraMock = vi.mocked(startCamera);
+const detectMock = vi.mocked(detectFrameStrict);
+const bakeMock = vi.mocked(bake.bakeFrame);
+
+/** A small stream, so the warp in the shear test stays cheap. */
+const STREAM_W = 300;
+const STREAM_H = 400;
+
+function fakeSession(video: HTMLVideoElement): CameraSession {
+  return { stream: { getTracks: () => [] } as unknown as MediaStream, video, width: STREAM_W, height: STREAM_H };
+}
+
+/** Lets timers, microtasks and jsdom's animation frames (the busy overlay's afterPaint) run. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function button(root: HTMLElement, label: string, within?: string): HTMLButtonElement {
+  const scope = within ? root.querySelector(within) : root;
+  const found = scope?.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+  if (!found) throw new Error(`button "${label}" not found`);
+  return found;
+}
+
+const STATIC: Frame = { cx: 150, cy: 200, width: 200, height: 200 * Math.SQRT2, angle: 0 };
+
+describe('live detection loop', () => {
+  let stub: CanvasStub;
+  let video: HTMLVideoElement;
+
+  beforeEach(() => {
+    stub = stubCanvas();
+    video = document.createElement('video');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    stub.restore();
+    vi.restoreAllMocks();
+  });
+
+  it('feeds every run through the tracker and reports found after three agreeing hits', () => {
+    const results: boolean[] = [];
+    const hit: Frame = { cx: 150, cy: 200, width: 180, height: 250, angle: 0 };
+    const detector = new LiveDetector(video, {
+      onResult: (state) => results.push(state.found),
+      detect: () => hit,
+    });
+    detector.start(STATIC, STREAM_W);
+    expect(detector.run().found).toBe(false);
+    expect(detector.run().found).toBe(false);
+    expect(detector.run().found).toBe(true);
+    expect(detector.state.corners).not.toBeNull();
+    detector.stop();
+    expect(detector.state.found).toBe(false);
+  });
+
+  it('starts at most one run per interval on the frame callback', () => {
+    let now = 0;
+    let callback: (() => void) | null = null;
+    const frameVideo = video as unknown as {
+      requestVideoFrameCallback: (cb: () => void) => number;
+      cancelVideoFrameCallback: (handle: number) => void;
+    };
+    frameVideo.requestVideoFrameCallback = (cb) => {
+      callback = cb;
+      return 1;
+    };
+    frameVideo.cancelVideoFrameCallback = () => {
+      callback = null;
+    };
+    const detect = vi.fn(() => null);
+    const detector = new LiveDetector(video, { onResult: () => {}, now: () => now, detect });
+    detector.start(STATIC, STREAM_W);
+    expect(detector.running).toBe(true);
+    callback!(); // first video frame: runs
+    expect(detect).toHaveBeenCalledTimes(1);
+    now += RUN_INTERVAL_MS / 2;
+    callback!(); // too soon: skipped, rescheduled
+    expect(detect).toHaveBeenCalledTimes(1);
+    now += RUN_INTERVAL_MS / 2;
+    callback!();
+    expect(detect).toHaveBeenCalledTimes(2);
+    detector.stop();
+    expect(detector.running).toBe(false);
+    expect(callback).toBeNull();
+  });
+
+  it('counts a failing run as a miss and keeps going', () => {
+    const detector = new LiveDetector(video, {
+      onResult: () => {},
+      detect: () => {
+        throw new Error('boom');
+      },
+    });
+    detector.start(STATIC, STREAM_W);
+    expect(detector.run().found).toBe(false);
+    expect(detector.running).toBe(true);
+    detector.stop();
+  });
+});
+
+describe('camera view with live detection (v0.10)', () => {
+  let root: HTMLElement;
+  let app: App;
+  let stub: CanvasStub;
+  /** The loop's pending animation frame; the tests fire it by hand. */
+  let pendingFrame: (() => void) | null;
+  let clock: number;
+
+  /** One video frame for the loop, far enough apart to pass the throttle. */
+  function videoFrame(): void {
+    clock += RUN_INTERVAL_MS;
+    const frame = pendingFrame;
+    pendingFrame = null;
+    frame?.();
+  }
+
+  beforeEach(() => {
+    stub = stubCanvas();
+    pendingFrame = null;
+    clock = 0;
+    // The loop prefers the video's frame callback; jsdom's animation frame stays for afterPaint().
+    const proto = HTMLVideoElement.prototype as unknown as Record<string, unknown>;
+    proto['requestVideoFrameCallback'] = (cb: () => void) => {
+      pendingFrame = cb;
+      return 1;
+    };
+    proto['cancelVideoFrameCallback'] = () => {
+      pendingFrame = null;
+    };
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    startCameraMock.mockImplementation((video) => Promise.resolve(fakeSession(video)));
+    root = document.createElement('div');
+    document.body.append(root);
+    app = new App(root, { version: '0', build: 'test' });
+    // jsdom lays nothing out: give the camera screen a phone-sized viewport.
+    const camera = root.querySelector<HTMLElement>('.screen-camera')!;
+    Object.defineProperty(camera, 'clientWidth', { value: 360, configurable: true });
+    Object.defineProperty(camera, 'clientHeight', { value: 640, configurable: true });
+  });
+
+  afterEach(() => {
+    app.dispose();
+    root.remove();
+    stub.restore();
+    const proto = HTMLVideoElement.prototype as unknown as Record<string, unknown>;
+    delete proto['requestVideoFrameCallback'];
+    delete proto['cancelVideoFrameCallback'];
+    vi.clearAllMocks();
+    vi.restoreAllMocks();
+  });
+
+  async function openCamera(): Promise<void> {
+    root.querySelector<HTMLButtonElement>('.start-button')!.click();
+    await settle();
+    expect(app.screen).toBe('camera');
+  }
+
+  it('shows the toggle on, the static outline and the shade', async () => {
+    await openCamera();
+    const toggle = button(root, 'Dokument automatisch erkennen');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    const overlay = root.querySelector('.camera-frame')!;
+    expect(overlay.hasAttribute('hidden')).toBe(false);
+    expect(overlay.classList.contains('found')).toBe(false);
+    expect(overlay.querySelector('.camera-outline')?.getAttribute('points')).toBeTruthy();
+    expect(overlay.querySelector('.camera-shade')?.getAttribute('d')).toContain('Z');
+  });
+
+  it('bakes a detected page on capture: frame upright without offsets, one bake', async () => {
+    await openCamera();
+    const tilted: Frame = { cx: 150, cy: 200, width: 180, height: 250, angle: (3 * Math.PI) / 180 };
+    detectMock.mockReturnValueOnce(tilted);
+    button(root, 'Foto aufnehmen').click();
+    await settle();
+    expect(app.screen).toBe('captured');
+    expect(detectMock).toHaveBeenCalledTimes(1);
+    expect(bakeMock).toHaveBeenCalledTimes(1);
+    const page = app.pageList[0]!;
+    expect(page.frame.angle).toBe(0);
+    expect(hasCornerOffsets(page.frame)).toBe(false);
+    expect(page.dirty).toBe(true);
+  });
+
+  it('warps a page with corner offsets and keeps the upright rectangle', async () => {
+    await openCamera();
+    const sheared: Frame = {
+      cx: 150,
+      cy: 200,
+      width: 180,
+      height: 250,
+      angle: 0,
+      corners: [
+        { x: 6, y: 0 },
+        { x: -6, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+      ],
+    };
+    detectMock.mockReturnValueOnce(sheared);
+    button(root, 'Foto aufnehmen').click();
+    await settle();
+    expect(app.screen).toBe('captured');
+    expect(bakeMock).toHaveBeenCalledTimes(1);
+    const page = app.pageList[0]!;
+    expect(hasCornerOffsets(page.frame)).toBe(false);
+    expect(page.frame.angle).toBe(0);
+  });
+
+  it('keeps the static frame on a miss and bakes nothing', async () => {
+    await openCamera();
+    detectMock.mockReturnValueOnce(null);
+    button(root, 'Foto aufnehmen').click();
+    await settle();
+    expect(app.screen).toBe('captured');
+    expect(detectMock).toHaveBeenCalledTimes(1);
+    expect(bakeMock).not.toHaveBeenCalled();
+    const page = app.pageList[0]!;
+    expect(page.frame.angle).toBe(0);
+    // The static frame: 90 % of the visible width of a 300 x 400 stream on a 360 x 640 view.
+    expect(page.frame.width).toBeCloseTo(0.9 * (STREAM_H * 360) / 640, 0);
+    expect(page.dirty).toBe(false);
+    expect(root.querySelector<HTMLElement>('.notice')?.hidden).toBe(true);
+  });
+
+  it('never detects with the toggle off, and keeps the choice across a retake', async () => {
+    await openCamera();
+    const toggle = button(root, 'Dokument automatisch erkennen');
+    toggle.click();
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    button(root, 'Foto aufnehmen').click();
+    await settle();
+    expect(app.screen).toBe('captured');
+    expect(detectMock).not.toHaveBeenCalled();
+    expect(bakeMock).not.toHaveBeenCalled();
+    // Back with one page reopens the camera: the toggle is still off.
+    button(root, 'Zurück', '.screen-captured').click();
+    await settle();
+    expect(app.screen).toBe('camera');
+    expect(button(root, 'Dokument automatisch erkennen').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('stores nothing: no localStorage key is written', async () => {
+    await openCamera();
+    button(root, 'Dokument automatisch erkennen').click();
+    button(root, 'Dokument automatisch erkennen').click();
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('turns the outline green after three agreeing live hits and vibrates once', async () => {
+    const vibrate = vi.fn(() => true);
+    vi.stubGlobal('navigator', { ...navigator, vibrate });
+    await openCamera();
+    expect(pendingFrame).not.toBeNull();
+    const hit: Frame = { cx: 150, cy: 200, width: 180, height: 250, angle: 0 };
+    detectMock.mockReturnValue(hit);
+    const overlay = root.querySelector('.camera-frame')!;
+    videoFrame();
+    videoFrame();
+    expect(overlay.classList.contains('found')).toBe(false);
+    videoFrame();
+    expect(overlay.classList.contains('found')).toBe(true);
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    videoFrame();
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    // The outline follows the detected corners, not the static rectangle.
+    const points = overlay.querySelector('.camera-outline')!.getAttribute('points')!;
+    const [nwx] = points.split(' ')[0]!.split(',').map(Number);
+    // nw corner: (150 - 90) stream px -> view px with the cover scale 640 / 400.
+    expect(nwx).toBeCloseTo(60 * 1.6 + (360 - 300 * 1.6) / 2, 0);
+    // Switching the toggle off drops the outline at once and stops the loop.
+    button(root, 'Dokument automatisch erkennen').click();
+    expect(overlay.classList.contains('found')).toBe(false);
+    expect(pendingFrame).toBeNull();
+  });
+
+  it('shows the warning when the outline was green but the still is a miss', async () => {
+    await openCamera();
+    const hit: Frame = { cx: 150, cy: 200, width: 180, height: 250, angle: 0 };
+    detectMock.mockReturnValue(hit);
+    videoFrame();
+    videoFrame();
+    videoFrame();
+    expect(root.querySelector('.camera-frame')!.classList.contains('found')).toBe(true);
+    detectMock.mockReturnValue(null);
+    button(root, 'Foto aufnehmen').click();
+    await settle();
+    expect(app.screen).toBe('captured');
+    expect(bakeMock).not.toHaveBeenCalled();
+    expect(root.querySelector<HTMLElement>('.notice')?.hidden).toBe(false);
+  });
+
+  it('stops the loop with the stream and hides the overlay', async () => {
+    await openCamera();
+    expect(pendingFrame).not.toBeNull();
+    button(root, 'Zurück', '.screen-camera').click();
+    expect(app.screen).toBe('start');
+    expect(pendingFrame).toBeNull();
+    expect(root.querySelector('.camera-frame')?.hasAttribute('hidden')).toBe(true);
+  });
+});
