@@ -17,7 +17,6 @@ import {
   initialFrame,
   scaleFrame,
   visibleImageRect,
-  withoutCorners,
   type CoverTransform,
   type Quad,
 } from './geometry';
@@ -864,8 +863,9 @@ export class App {
       await this.runBusy(() => {
         applyCapture(page, bakeFrame(asCapture(page), detected));
       }, 'Entzerren fehlgeschlagen', frameNeedsBake(detected));
-      // A failed bake leaves the image; the page keeps the detected rectangle without offsets.
-      if (hasCornerOffsets(page.frame)) page.frame = withoutCorners(page.frame);
+      // A failed bake leaves the image with the detected frame still pending (rotated or with
+      // offsets), which the rest of the app never expects on a page: fall back to the static frame.
+      if (frameNeedsBake(page.frame)) page.frame = staticFrame;
       this.renderPreview();
       this.render();
     } else if (liveFound) {
