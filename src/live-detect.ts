@@ -5,7 +5,16 @@
  * and glue; the maths lives in detect.ts, the rendering in canvas.ts.
  */
 
-import { AGREE_FRACTION, DetectionTracker, detectFrameIn, detectFrameStrict, type TrackerState } from './detect';
+import {
+  AGREE_FRACTION,
+  createDetectScratch,
+  DetectionTracker,
+  detectFrameIn,
+  detectFrameStrict,
+  releaseDetectScratch,
+  type DetectScratch,
+  type TrackerState,
+} from './detect';
 import { quadCorners } from './geometry';
 import type { Frame } from './model';
 
@@ -31,6 +40,8 @@ export class LiveDetector {
   private readonly now: () => number;
   private readonly detect: typeof detectFrameStrict;
   private tracker: DetectionTracker | null = null;
+  /** Working canvas and luminance buffers reused across runs. */
+  private scratch: DetectScratch | null = null;
   private frame: Frame | null = null;
   private imageWidth = 0;
   private lastRun = Number.NEGATIVE_INFINITY;
@@ -65,6 +76,7 @@ export class LiveDetector {
     this.frame = frame;
     this.imageWidth = imageWidth;
     this.tracker = new DetectionTracker(AGREE_FRACTION * frame.width);
+    this.scratch = createDetectScratch();
     this.lastRun = Number.NEGATIVE_INFINITY;
     this.schedule();
   }
@@ -78,6 +90,8 @@ export class LiveDetector {
     }
     this.tracker = null;
     this.frame = null;
+    if (this.scratch) releaseDetectScratch(this.scratch);
+    this.scratch = null;
   }
 
   private schedule(): void {
@@ -108,7 +122,7 @@ export class LiveDetector {
     if (!this.tracker || !this.frame) return this.state;
     let corners = null;
     try {
-      const detected = detectFrameIn(this.video, this.frame, this.imageWidth, this.detect);
+      const detected = detectFrameIn(this.video, this.frame, this.imageWidth, this.detect, this.scratch ?? undefined);
       corners = detected ? quadCorners(detected) : null;
     } catch (error) {
       // A run that fails (canvas memory, detached stream) is a miss; the loop goes on.

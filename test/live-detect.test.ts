@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app';
 import type { CameraSession } from '../src/camera';
 import { LiveDetector, RUN_INTERVAL_MS } from '../src/live-detect';
+import { sampleImage, WorkingCanvas } from '../src/canvas';
 import { hasCornerOffsets } from '../src/geometry';
 import type { Frame } from '../src/model';
 import { stubCanvas, type CanvasStub } from './canvas-stub';
@@ -131,6 +132,40 @@ describe('live detection loop', () => {
     expect(detector.run().found).toBe(false);
     expect(detector.running).toBe(true);
     detector.stop();
+  });
+});
+
+describe('working canvas reuse (v0.10)', () => {
+  let stub: CanvasStub;
+
+  beforeEach(() => {
+    stub = stubCanvas();
+  });
+
+  afterEach(() => {
+    stub.restore();
+  });
+
+  it('samples into one reused canvas, resizing it between calls of different sizes', () => {
+    const into = new WorkingCanvas();
+    const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    const source = document.createElement('canvas');
+    const first = sampleImage(source, identity, 80, 110, into);
+    expect(first.width).toBe(80);
+    expect(first.height).toBe(110);
+    const { canvas } = into.acquire(80, 110);
+    expect(canvas.width).toBe(80);
+    expect(canvas.height).toBe(110);
+    const second = sampleImage(source, identity, 60, 90, into);
+    expect(second.width).toBe(60);
+    expect(second.height).toBe(90);
+    expect(into.acquire(60, 90).canvas).toBe(canvas);
+    expect(canvas.width).toBe(60);
+    expect(canvas.height).toBe(90);
+    into.release();
+    expect(canvas.width).toBe(0);
+    expect(into.acquire(10, 10).canvas).not.toBe(canvas);
+    into.release();
   });
 });
 

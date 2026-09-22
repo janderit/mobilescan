@@ -43,7 +43,7 @@ import {
   type Rect,
 } from './geometry';
 import { clampTone, LUMA, type Tone } from './tone';
-import { sampleImage } from './canvas';
+import { sampleImage, WorkingCanvas } from './canvas';
 
 /** Longer frame side of the working image for edge detection, in pixels. */
 export const DETECT_LONG_SIDE = 800;
@@ -147,18 +147,49 @@ export interface Luminance {
   valid: Uint8Array;
 }
 
-export function luminanceOf(image: ImageData): Luminance {
+/**
+ * The luminance of a working image. With `reuse` of the same size, its arrays
+ * are filled in place instead of allocated (the live detection runs this on
+ * about a million pixels several times a second); a `reuse` of another size
+ * is ignored.
+ */
+export function luminanceOf(image: ImageData, reuse?: Luminance): Luminance {
   const { width, height, data } = image;
   const n = width * height;
-  const lum = new Float32Array(n);
-  const valid = new Uint8Array(n);
+  const reusable = reuse !== undefined && reuse.width === width && reuse.height === height && reuse.lum.length === n;
+  const lum = reusable ? reuse.lum : new Float32Array(n);
+  const valid = reusable ? reuse.valid : new Uint8Array(n);
+  if (reusable) {
+    // Only opaque pixels are set below; the rest must read as invalid again.
+    lum.fill(0);
+    valid.fill(0);
+  }
   for (let i = 0, p = 0; i < n; i += 1, p += 4) {
     if (data[p + 3]! === 255) {
       valid[i] = 1;
       lum[i] = (LUMA.r * data[p]! + LUMA.g * data[p + 1]! + LUMA.b * data[p + 2]!) / 255;
     }
   }
-  return { width, height, lum, valid };
+  return reusable ? reuse : { width, height, lum, valid };
+}
+
+/**
+ * Buffers a caller may keep between detection runs so that a run allocates
+ * neither a working canvas nor the luminance arrays (v0.10 live detection).
+ * Create one with `createDetectScratch`, drop it with `releaseDetectScratch`.
+ */
+export interface DetectScratch {
+  canvas: WorkingCanvas;
+  luminance?: Luminance;
+}
+
+export function createDetectScratch(): DetectScratch {
+  return { canvas: new WorkingCanvas() };
+}
+
+export function releaseDetectScratch(scratch: DetectScratch): void {
+  scratch.canvas.release();
+  delete scratch.luminance;
 }
 
 // ---- edges ---------------------------------------------------------------
@@ -420,8 +451,11 @@ export function detectFrameDetailed(
   layout: WorkingLayout,
   current: Frame,
   imageWidth: number,
+  scratch?: DetectScratch,
 ): FrameDetection {
-  const edges = detectEdges(luminanceOf(working), layout.frame);
+  const luminance = luminanceOf(working, scratch?.luminance);
+  if (scratch) scratch.luminance = luminance;
+  const edges = detectEdges(luminance, layout.frame);
   if (edges.found === 0) return { frame: null, found: 0, clamped: false };
   const back = invertAffine(layout.transform);
   const corners = edges.corners.map((p) => ({
@@ -441,8 +475,9 @@ export function detectFrame(
   layout: WorkingLayout,
   current: Frame,
   imageWidth: number,
+  scratch?: DetectScratch,
 ): Frame | null {
-  return detectFrameDetailed(working, layout, current, imageWidth).frame;
+  return detectFrameDetailed(working, layout, current, imageWidth, scratch).frame;
 }
 
 /**
@@ -454,8 +489,9 @@ export function detectFrameStrict(
   layout: WorkingLayout,
   current: Frame,
   imageWidth: number,
+  scratch?: DetectScratch,
 ): Frame | null {
-  const result = detectFrameDetailed(working, layout, current, imageWidth);
+  const result = detectFrameDetailed(working, layout, current, imageWidth, scratch);
   if (result.found < 4 || result.clamped) return null;
   return result.frame;
 }
@@ -464,17 +500,19 @@ export function detectFrameStrict(
  * The whole pipeline on an image: renders the working copy of `frame`
  * (offsets ignored by the layout) from `image` and runs `rule` on it. The
  * wand's `detectFrame` by default; the live detection and the still after
- * the shutter pass `detectFrameStrict`.
+ * the shutter pass `detectFrameStrict`. A caller that runs repeatedly hands
+ * in a `scratch` so the working canvas and luminance arrays are reused.
  */
 export function detectFrameIn(
   image: CanvasImageSource,
   frame: Frame,
   imageWidth: number,
   rule: typeof detectFrameStrict = detectFrame,
+  scratch?: DetectScratch,
 ): Frame | null {
   const layout = frameWorkingLayout(frame);
-  const working = sampleImage(image, layout.transform, layout.width, layout.height);
-  return rule(working, layout, frame, imageWidth);
+  const working = sampleImage(image, layout.transform, layout.width, layout.height, scratch?.canvas);
+  return rule(working, layout, frame, imageWidth, scratch);
 }
 
 // ---- live detection tracker (v0.10) --------------------------------------

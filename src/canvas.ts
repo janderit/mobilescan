@@ -36,17 +36,60 @@ export function releaseCanvas(canvas: HTMLCanvasElement): void {
 }
 
 /**
+ * A canvas kept between `sampleImage` calls (the live detection renders a
+ * working copy several times a second): resized only when the requested size
+ * differs, cleared before every draw, released with `release()`.
+ */
+export class WorkingCanvas {
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
+
+  /** The canvas at `width` x `height`, cleared to transparent. */
+  acquire(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+    const w = Math.max(1, Math.round(width));
+    const h = Math.max(1, Math.round(height));
+    if (!this.canvas || !this.ctx) {
+      this.canvas = document.createElement('canvas');
+      this.canvas.width = w;
+      this.canvas.height = h;
+      const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        this.canvas = null;
+        throw new Error('2d context unavailable');
+      }
+      this.ctx = ctx;
+    } else if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.clearRect(0, 0, w, h);
+    return { canvas: this.canvas, ctx: this.ctx };
+  }
+
+  /** Releases the pixel buffer; the next `acquire` starts afresh. */
+  release(): void {
+    if (this.canvas) releaseCanvas(this.canvas);
+    this.canvas = null;
+    this.ctx = null;
+  }
+}
+
+/**
  * Renders `image` through `transform` (image pixel -> output pixel) into a
- * temporary canvas of the given size and returns its pixels. Areas the image
- * does not cover stay transparent. Used for the auto-detect working copies.
+ * canvas of the given size and returns its pixels. Areas the image does not
+ * cover stay transparent. Used for the auto-detect working copies. Without
+ * `into` a temporary canvas is used and released afterwards; with a
+ * `WorkingCanvas` its canvas is reused across calls.
  */
 export function sampleImage(
   image: CanvasImageSource,
   transform: { a: number; b: number; c: number; d: number; e: number; f: number },
   width: number,
   height: number,
+  into?: WorkingCanvas,
 ): ImageData {
-  const { canvas, ctx } = createCanvas(width, height);
+  const { canvas, ctx } = into ? into.acquire(width, height) : createCanvas(width, height);
   try {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -56,7 +99,7 @@ export function sampleImage(
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     return ctx.getImageData(0, 0, canvas.width, canvas.height);
   } finally {
-    releaseCanvas(canvas);
+    if (!into) releaseCanvas(canvas);
   }
 }
 

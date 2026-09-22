@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AGREE_FRACTION,
   BAND_INSIDE,
+  createDetectScratch,
   DetectionTracker,
   detectEdges,
   detectFrame,
@@ -268,6 +269,63 @@ describe('frame detection', () => {
     quadCorners(found!).forEach((corner, i) => {
       expect(distance(corner, truth[i]!)).toBeLessThan(2);
     });
+  });
+});
+
+describe('luminance buffer reuse (v0.10)', () => {
+  /** A 4 x 3 working image: opaque grey where `opaque` says so, transparent elsewhere. */
+  function image(opaque: (i: number) => boolean, grey: number): ImageData {
+    const width = 4;
+    const height = 3;
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i += 1) {
+      if (!opaque(i)) continue;
+      data[i * 4] = grey;
+      data[i * 4 + 1] = grey;
+      data[i * 4 + 2] = grey;
+      data[i * 4 + 3] = 255;
+    }
+    return { data, width, height, colorSpace: 'srgb' } as ImageData;
+  }
+
+  it('gives the same result as a fresh call and resets pixels that became transparent', () => {
+    const first = image((i) => i % 2 === 0, 200);
+    const second = image((i) => i % 3 === 0, 100);
+    const buffer = luminanceOf(first);
+    const reused = luminanceOf(second, buffer);
+    const fresh = luminanceOf(second);
+    expect(reused).toBe(buffer);
+    expect(Array.from(reused.valid)).toEqual(Array.from(fresh.valid));
+    expect(Array.from(reused.lum)).toEqual(Array.from(fresh.lum));
+    // Pixel 2 was opaque in the first image and is transparent in the second.
+    expect(reused.valid[2]).toBe(0);
+    expect(reused.lum[2]).toBe(0);
+  });
+
+  it('ignores a buffer of another size and allocates afresh', () => {
+    const small = luminanceOf(image(() => true, 128));
+    const layout = frameWorkingLayout({ cx: 600, cy: 800, width: 900, height: 1250, angle: 0 });
+    const working = renderWorking(layout, (p) => (insideImage(p) ? 0.5 : null));
+    const result = luminanceOf(working, small);
+    expect(result).not.toBe(small);
+    expect(result.width).toBe(layout.width);
+    expect(result.lum.length).toBe(layout.width * layout.height);
+  });
+
+  it('threads the scratch through detectFrame and keeps the luminance for the next run', () => {
+    const paper: Frame = { cx: 600, cy: 800, width: 900, height: 1250, angle: 0 };
+    const around: Frame = { cx: 600, cy: 800, width: 954, height: 1325, angle: 0 };
+    const layout = frameWorkingLayout(around);
+    const working = renderWorking(layout, paperScene(paper));
+    const scratch = createDetectScratch();
+    const plain = detectFrame(working, layout, around, IMAGE_W);
+    const first = detectFrame(working, layout, around, IMAGE_W, scratch);
+    const kept = scratch.luminance;
+    const second = detectFrame(working, layout, around, IMAGE_W, scratch);
+    expect(kept).toBeDefined();
+    expect(scratch.luminance).toBe(kept);
+    expect(first).toEqual(plain);
+    expect(second).toEqual(plain);
   });
 });
 
