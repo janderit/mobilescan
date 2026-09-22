@@ -108,6 +108,12 @@ export function sampleImage(
 /** Cap for a display canvas backing store (device pixels per CSS pixel). */
 export const MAX_DPR = 2;
 
+/**
+ * One image pixel is never stretched beyond this many device pixels: past it
+ * a zoomed stage or a loupe shows blur, not detail.
+ */
+export const MAX_DEVICE_PIXELS_PER_IMAGE_PIXEL = 2;
+
 /** The device pixel ratio the display canvases use. */
 export function displayDpr(): number {
   return Math.min(MAX_DPR, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);

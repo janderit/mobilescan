@@ -1,4 +1,8 @@
-// ---- homographies ------------------------------------------------------------
+/**
+ * Projective transforms for the shear bake: the 3x3 homography, its
+ * construction from four point pairs, inversion and composition.
+ * No DOM access: plain number maths so it can be unit tested.
+ */
 
 import type { Point } from './model';
 import type { Quad } from './affine';

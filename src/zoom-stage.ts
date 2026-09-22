@@ -15,13 +15,11 @@
  * stage size are unchanged.
  */
 
-import { affineScale, type Affine, type Point, type Rect } from './geometry';
+import { affineScale, IDENTITY_AFFINE, type Affine, type Point, type Rect } from './geometry';
 import { displayDpr, drawImageThrough, releaseCanvas, sizeDisplayCanvas } from './canvas';
 import { ZoomGesture } from './zoom-gesture';
 import { pointIn } from './ui';
 import { composeZoom, maxZoomScale, sameZoom, type ZoomState } from './zoom';
-
-const IDENTITY_AFFINE: Readonly<Affine> = Object.freeze({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
 
 function sameAffine(p: Affine, q: Affine): boolean {
   return p.a === q.a && p.b === q.b && p.c === q.c && p.d === q.d && p.e === q.e && p.f === q.f;

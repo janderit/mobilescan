@@ -7,7 +7,7 @@
  * transform: `zoom ∘ fitted`, image pixel -> CSS pixel of the stage.
  */
 
-import { LOUPE_MAX_DEVICE_PIXELS } from './loupe';
+import { MAX_DEVICE_PIXELS_PER_IMAGE_PIXEL } from './canvas';
 import { EPSILON, type Affine, type Point, type Rect } from './geometry';
 
 export interface ZoomState {
@@ -40,7 +40,7 @@ export function isFittedZoom(z: ZoomState): boolean {
  * shows blur, not detail). Never below 1.
  */
 export function maxZoomScale(fittedScale: number, devicePixelRatio: number): number {
-  const cap = LOUPE_MAX_DEVICE_PIXELS / (devicePixelRatio * fittedScale);
+  const cap = MAX_DEVICE_PIXELS_PER_IMAGE_PIXEL / (devicePixelRatio * fittedScale);
   return Math.max(1, Math.min(MAX_ZOOM, cap));
 }
 

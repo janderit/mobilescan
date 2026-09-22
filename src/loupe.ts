@@ -6,6 +6,7 @@
  */
 
 import { rotationAbout, type Affine, type Handle, type Point, type Rect } from './geometry';
+import { MAX_DEVICE_PIXELS_PER_IMAGE_PIXEL } from './canvas';
 
 /** Outer diameter of a loupe in CSS pixels, border included. */
 export const LOUPE_DIAMETER = 96;
@@ -17,8 +18,6 @@ export const LOUPE_INNER = LOUPE_DIAMETER - 2 * LOUPE_BORDER;
 export const LOUPE_GAP = 12;
 /** Magnification relative to the main view's scale. */
 export const LOUPE_MAGNIFICATION = 3;
-/** One image pixel is never stretched beyond this many device pixels. */
-export const LOUPE_MAX_DEVICE_PIXELS = 2;
 /** The cluster keeps at least this distance from the drag's start point. */
 export const LOUPE_SUPPRESS_MARGIN = 24;
 
@@ -150,7 +149,7 @@ export function placeLoupes(
  * capped so one image pixel covers at most two device pixels.
  */
 export function loupeScale(viewScale: number, devicePixelRatio: number): number {
-  return Math.min(LOUPE_MAGNIFICATION * viewScale, LOUPE_MAX_DEVICE_PIXELS / devicePixelRatio);
+  return Math.min(LOUPE_MAGNIFICATION * viewScale, MAX_DEVICE_PIXELS_PER_IMAGE_PIXEL / devicePixelRatio);
 }
 
 /**

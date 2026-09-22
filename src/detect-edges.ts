@@ -16,7 +16,7 @@
 
 import type { Frame, Point } from './model';
 import { rotationAbout, scaleAffine, translateAffine, type Affine, type Quad, type Rect } from './geometry';
-import { LUMA } from './tone';
+import { luminance } from './color';
 
 /** Longer frame side of the working image for edge detection, in pixels. */
 export const DETECT_LONG_SIDE = 800;
@@ -109,7 +109,7 @@ export function luminanceOf(image: ImageData, reuse?: Luminance): Luminance {
   for (let i = 0, p = 0; i < n; i += 1, p += 4) {
     if (data[p + 3]! === 255) {
       valid[i] = 1;
-      lum[i] = (LUMA.r * data[p]! + LUMA.g * data[p + 1]! + LUMA.b * data[p + 2]!) / 255;
+      lum[i] = luminance(data[p]!, data[p + 1]!, data[p + 2]!) / 255;
     }
   }
   return reusable ? reuse : { width, height, lum, valid };

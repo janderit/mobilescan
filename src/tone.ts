@@ -13,6 +13,8 @@
  * Filters operate in sRGB; alpha is untouched.
  */
 
+import { luminance } from './color';
+
 export interface Tone {
   /** 0.5 .. 1.5, neutral 1 */
   brightness: number;
@@ -44,9 +46,6 @@ export const TONE_RANGES: Record<ToneKey, ToneRange> = {
 
 /** Channel gain at full warm/cool: red and blue move by this fraction in opposite directions. */
 export const TEMPERATURE_GAIN = 0.2;
-
-/** sRGB luminance coefficients used by the CSS grayscale() filter. */
-export const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 };
 
 export const NEUTRAL_TONE: Readonly<Tone> = Object.freeze({
   brightness: 1,
@@ -158,7 +157,7 @@ export function applyToneToPixel(
   let cg = channelTransfer(g, tone, gains.g);
   let cb = channelTransfer(b, tone, gains.b);
   if (tone.grayscale) {
-    const y = clamp01(LUMA.r * cr + LUMA.g * cg + LUMA.b * cb);
+    const y = clamp01(luminance(cr, cg, cb));
     cr = y;
     cg = y;
     cb = y;
@@ -192,7 +191,7 @@ export function applyTonePixels(data: Uint8ClampedArray, tone: Tone, luts = tone
   const { r: lr, g: lg, b: lb } = luts;
   if (tone.grayscale) {
     for (let i = 0; i < data.length; i += 4) {
-      const y = LUMA.r * lr[data[i]!]! + LUMA.g * lg[data[i + 1]!]! + LUMA.b * lb[data[i + 2]!]!;
+      const y = luminance(lr[data[i]!]!, lg[data[i + 1]!]!, lb[data[i + 2]!]!);
       const v = Math.round(clamp01(y) * 255);
       data[i] = v;
       data[i + 1] = v;

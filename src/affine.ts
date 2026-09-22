@@ -34,6 +34,9 @@ export interface Affine {
   f: number;
 }
 
+/** The identity transform. */
+export const IDENTITY_AFFINE: Readonly<Affine> = Object.freeze({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
+
 export function applyAffine(t: Affine, p: Point): Point {
   return { x: t.a * p.x + t.c * p.y + t.e, y: t.b * p.x + t.d * p.y + t.f };
 }

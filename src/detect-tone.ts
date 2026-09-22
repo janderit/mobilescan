@@ -7,7 +7,8 @@
  */
 
 import type { Frame } from './model';
-import { clampTone, LUMA, type Tone } from './tone';
+import { luminance } from './color';
+import { clampTone, type Tone } from './tone';
 import { workingLayout, type WorkingLayout } from './detect-edges';
 
 /** Longer side of the working image for tone detection, in pixels. */
@@ -37,7 +38,7 @@ export function luminanceHistogram(image: ImageData): Uint32Array {
   const { data } = image;
   for (let p = 0; p < data.length; p += 4) {
     if (data[p + 3]! !== 255) continue;
-    const y = Math.round(LUMA.r * data[p]! + LUMA.g * data[p + 1]! + LUMA.b * data[p + 2]!);
+    const y = Math.round(luminance(data[p]!, data[p + 1]!, data[p + 2]!));
     const bin = Math.min(255, Math.max(0, y));
     histogram[bin] = histogram[bin]! + 1;
   }

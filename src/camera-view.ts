@@ -8,7 +8,7 @@
  */
 
 import * as icons from './icons';
-import type { Frame, Point, UprightFrame } from './model';
+import type { Point, UprightFrame } from './model';
 import { iconButton, el, prefersReducedMotion } from './ui';
 import { applyAffine, coverTransform, frameCorners, initialFrame, visibleImageRect, type Affine } from './geometry';
 import { stopCamera, type CameraSession } from './camera';
@@ -29,8 +29,8 @@ export function vibrate(ms: number): void {
   }
 }
 
-function sameFrame(a: Frame, b: Frame): boolean {
-  return a.cx === b.cx && a.cy === b.cy && a.width === b.width && a.height === b.height && a.angle === b.angle;
+function sameFrame(a: UprightFrame, b: UprightFrame): boolean {
+  return a.cx === b.cx && a.cy === b.cy && a.width === b.width && a.height === b.height;
 }
 
 export interface CameraViewCallbacks {
