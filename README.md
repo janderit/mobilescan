@@ -2,6 +2,9 @@
 
 MobileScan is a progressive web app that allows users to scan paper documents on mobile devices (Android + iPhone) and save them as PDFs with minimal image processing.
 
+- Repository: https://github.com/janderit/mobilescan
+- App: https://mobilescan.app/app/
+
 ## Project state
 
 v0.4 is implemented (capture + share, crop/rotate, brightness/contrast/temperature, grayscale, error states, history integration, transitions). Run `npm install`, then `npm run dev` for a local HTTPS
