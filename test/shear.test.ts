@@ -3,6 +3,7 @@ import {
   CORNER_HANDLES,
   MIN_FRAME_FRACTION,
   applyHomography,
+  cornerOffsets,
   frameOverflow,
   fromFrameLocal,
   handleLocalPosition,
@@ -12,13 +13,13 @@ import {
   insideFrame,
   invertHomography,
   moveCorner,
-  moveFrame,
   multiplyHomography,
   quadCorners,
   quadValid,
   rectLocalCorners,
   resizeFrame,
   rotate90Right,
+  scaleFrame,
   warpLayout,
   withoutCorners,
   type Homography,
@@ -162,7 +163,7 @@ describe('moveCorner (shear mode)', () => {
     expect(overflow).toBeGreaterThan(0);
     const worse = moveCorner(f, 'ne', 500, -500, W, H);
     expect(frameOverflow(worse, W, H)).toBeLessThanOrEqual(overflow + 1e-6);
-    expect(worse.corners![1]).not.toEqual({ x: 500, y: -500 });
+    expect(cornerOffsets(worse)[1]).not.toEqual({ x: 500, y: -500 });
     const better = moveCorner(f, 'ne', -300, 300, W, H);
     expect(better.corners![1]).toEqual({ x: -300, y: 300 });
   });
@@ -193,12 +194,6 @@ describe('crop and rotate with displaced corners', () => {
     expect(r.height).toBe(2600);
   });
 
-  it('a body drag keeps the offsets', () => {
-    const r = moveFrame(sheared(), 50, -50, W, H);
-    expect(r.corners).toEqual(sheared().corners);
-    expect(r.cx).toBe(1550);
-  });
-
   it('crop drags obey the quadrilateral: the displaced corner may not leave the image', () => {
     const f = frame({ corners: offsets(zero, { x: 400, y: 0 }, zero, zero) });
     const r = resizeFrame(f, 'e', 5000, 0, W, H);
@@ -226,6 +221,47 @@ describe('crop and rotate with displaced corners', () => {
     const before = quadCorners(f);
     const after = quadCorners(rotate90Right(f));
     for (let i = 0; i < 4; i += 1) expectPoint(after[(i + 1) % 4]!, before[i]!.x, before[i]!.y);
+  });
+});
+
+describe('corner offsets are stored only when they matter', () => {
+  const agrees = (f: Frame): void => expect(f.corners !== undefined).toBe(hasCornerOffsets(f));
+
+  it('a shear drag that moves a corner and back leaves `corners` absent', () => {
+    const out = moveCorner(frame(), 'ne', -150, 80, W, H);
+    expect(out.corners).toBeDefined();
+    agrees(out);
+    const back = moveCorner(out, 'ne', 150, -80, W, H);
+    expect(back.corners).toBeUndefined();
+    agrees(back);
+    expect(back).toEqual(frame());
+  });
+
+  it('a shear drag below the epsilon yields no `corners`', () => {
+    const out = moveCorner(frame(), 'sw', 0.3, -0.2, W, H);
+    expect(out.corners).toBeUndefined();
+    agrees(out);
+  });
+
+  it('rotate90Right of a frame with offsets all below the epsilon yields no `corners`', () => {
+    const f = frame({ corners: offsets({ x: 0.4, y: -0.3 }, zero, { x: 0, y: 0.49 }, zero) });
+    const turned = rotate90Right(f);
+    expect(turned.corners).toBeUndefined();
+    agrees(turned);
+    const kept = rotate90Right(frame({ corners: offsets({ x: 40, y: 20 }, zero, { x: 0, y: -50 }, zero) }));
+    expect(kept.corners).toBeDefined();
+    agrees(kept);
+  });
+
+  it('scaleFrame drops offsets that shrink below the epsilon and keeps the others', () => {
+    const f = frame({ corners: offsets({ x: 2, y: 0 }, zero, zero, zero) });
+    const small = scaleFrame(f, 0.1);
+    expect(small.corners).toBeUndefined();
+    agrees(small);
+    const large = scaleFrame(f, 10);
+    expect(large.corners![0]).toEqual({ x: 20, y: 0 });
+    agrees(large);
+    agrees(scaleFrame(frame(), 2));
   });
 });
 

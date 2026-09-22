@@ -13,7 +13,6 @@ import {
   handleLocalPosition,
   hitHandle,
   invertAffine,
-  moveFrame,
   normalizeAngle,
   resizeFrame,
   rotate90Right,
@@ -113,36 +112,6 @@ describe('rotate90Right', () => {
     expect(after.y).toBeCloseTo(before.y, 6);
     expect(after.width).toBeCloseTo(before.width, 6);
     expect(after.height).toBeCloseTo(before.height, 6);
-  });
-});
-
-describe('moveFrame', () => {
-  it('translates freely inside the image', () => {
-    const f = moveFrame(frame(), 100, -200, W, H);
-    expect(f.cx).toBe(1600);
-    expect(f.cy).toBe(1800);
-  });
-
-  it('clamps at the image edge instead of rejecting the move', () => {
-    const f = moveFrame(frame(), 5000, 0, W, H);
-    expect(f.cx + f.width / 2).toBeCloseTo(W, 3);
-    expect(f.cy).toBe(2000);
-  });
-
-  it('clamps a rotated frame by its corners', () => {
-    const f = moveFrame(frame({ width: 1000, height: 1000, angle: deg(45) }), -5000, 0, W, H);
-    expect(frameOverflow(f, W, H)).toBeLessThan(1e-3);
-    expect(frameBounds(f).x).toBeCloseTo(0, 3);
-  });
-
-  it('lets a frame that already sticks out (after rotation) move back in but not further out', () => {
-    // Nearly full-size frame rotated 10°: corners are outside the image.
-    const f = frame({ width: 2900, height: 3900, angle: deg(10) });
-    const overflow = frameOverflow(f, W, H);
-    expect(overflow).toBeGreaterThan(0);
-    const worse = moveFrame(f, 500, 0, W, H);
-    expect(frameOverflow(worse, W, H)).toBeLessThanOrEqual(overflow + 1e-6);
-    expect(worse.cx).toBeCloseTo(f.cx, 3);
   });
 });
 
