@@ -222,6 +222,116 @@ button {
   padding: 16px calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left));
 }
 
+/* Edit popover (captured view) */
+
+.popover-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.popover-backdrop[hidden] {
+  display: none;
+}
+
+.popover {
+  position: absolute;
+  right: calc(20px + var(--safe-right));
+  bottom: calc(112px + var(--safe-bottom));
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.popover::after {
+  content: '';
+  position: absolute;
+  bottom: -9px;
+  right: 40px;
+  width: 16px;
+  height: 16px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+
+.icon-button.compact {
+  width: 52px;
+  height: 52px;
+}
+
+.icon-button.compact svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Crop/rotate view */
+
+.screen-edit {
+  background: var(--surface);
+}
+
+.edit-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) 16px calc(16px + var(--safe-left));
+  background: var(--surface-alt);
+  touch-action: none;
+  overflow: hidden;
+}
+
+.edit-canvas,
+.edit-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.edit-overlay {
+  overflow: visible;
+}
+
+.edit-shade {
+  fill: rgba(0, 0, 0, 0.3);
+}
+
+.edit-frame {
+  fill: none;
+  stroke: var(--frame);
+  stroke-width: 3;
+  stroke-dasharray: 10 8;
+}
+
+.edit-handle {
+  fill: var(--frame);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.edit-arc {
+  fill: none;
+  stroke: var(--frame);
+  stroke-width: 3;
+  stroke-dasharray: 4 6;
+}
+
+.button-bar-compact {
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.segmented-modes button {
+  width: 56px;
+  height: 44px;
+}
+
 /* Share sheet */
 
 .sheet-backdrop {

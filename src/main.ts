@@ -1,5 +1,5 @@
 /**
- * MobileScan v0.1: start -> camera -> captured -> share sheet -> busy.
+ * MobileScan v0.2: start -> camera -> captured -> (share sheet | edit popover -> crop/rotate) -> busy.
  * One in-memory state machine, plain DOM, no persistence.
  */
 
@@ -11,12 +11,15 @@ import type { Frame } from './model';
 import { COMPRESSION_LEVELS, DEFAULT_COMPRESSION } from './quality';
 import { captureStill, startCamera, stopCamera, type CameraSession } from './camera';
 import { buildPdfFile, releaseCanvas, renderFrame, sharePdf } from './share';
+import { CropRotateView } from './editor';
+import { bakeRotation } from './bake';
 
-type Screen = 'start' | 'camera' | 'captured';
+type Screen = 'start' | 'camera' | 'captured' | 'edit';
 
 interface State {
   screen: Screen;
   sheetOpen: boolean;
+  menuOpen: boolean;
   busy: boolean;
   level: CompressionLevel;
 }
@@ -68,6 +71,7 @@ class App {
   private readonly state: State = {
     screen: 'start',
     sheetOpen: false,
+    menuOpen: false,
     busy: false,
     level: DEFAULT_COMPRESSION,
   };
@@ -89,6 +93,11 @@ class App {
 
   // Captured
   private readonly previewCanvas: HTMLCanvasElement;
+  private readonly menuBackdrop: HTMLElement;
+  private readonly editButton: HTMLButtonElement;
+
+  // Crop/rotate
+  private readonly editor: CropRotateView;
 
   // Share sheet
   private readonly sheetBackdrop: HTMLElement;
@@ -141,9 +150,25 @@ class App {
     capturedBack.addEventListener('click', () => void this.retake());
     const shareButton = iconButton(icons.share, 'Teilen', 'primary');
     shareButton.addEventListener('click', () => this.openSheet());
-    const editButton = iconButton(icons.edit, 'Bearbeiten');
-    editButton.setAttribute('aria-disabled', 'true');
-    editButton.tabIndex = -1;
+    this.editButton = iconButton(icons.edit, 'Bearbeiten');
+    this.editButton.setAttribute('aria-haspopup', 'menu');
+    this.editButton.addEventListener('click', () => this.toggleMenu());
+
+    // Edit popover: crop/rotate (active), brightness/contrast (v0.3, disabled).
+    const cropItem = iconButton(icons.crop, 'Zuschneiden und drehen', 'compact');
+    cropItem.setAttribute('role', 'menuitem');
+    cropItem.addEventListener('click', () => this.openEditor());
+    const brightnessItem = iconButton(icons.brightness, 'Helligkeit und Kontrast', 'compact');
+    brightnessItem.setAttribute('role', 'menuitem');
+    brightnessItem.setAttribute('aria-disabled', 'true');
+    brightnessItem.tabIndex = -1;
+    const menu = el('div', 'popover', cropItem, brightnessItem);
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Bearbeiten');
+    this.menuBackdrop = el('div', 'popover-backdrop', menu);
+    this.menuBackdrop.addEventListener('click', (event) => {
+      if (event.target === this.menuBackdrop) this.closeMenu();
+    });
 
     // Share sheet
     const segmented = el('div', 'segmented');
@@ -185,9 +210,16 @@ class App {
       'section',
       'screen screen-captured',
       el('div', 'captured-stage', this.previewCanvas),
-      el('div', 'button-bar', capturedBack, shareButton, editButton),
+      el('div', 'button-bar', capturedBack, shareButton, this.editButton),
+      this.menuBackdrop,
       this.sheetBackdrop,
     );
+
+    // Crop/rotate
+    this.editor = new CropRotateView({
+      onCancel: () => this.closeEditor(null),
+      onConfirm: (frame) => this.closeEditor(frame),
+    });
 
     // Busy
     this.busyOverlay = el('div', 'busy');
@@ -196,7 +228,13 @@ class App {
     this.busyOverlay.setAttribute('aria-label', 'Bitte warten');
     this.busyOverlay.querySelector('svg')?.setAttribute('aria-hidden', 'true');
 
-    root.append(this.startScreen, this.cameraScreen, this.capturedScreen, this.busyOverlay);
+    root.append(
+      this.startScreen,
+      this.cameraScreen,
+      this.capturedScreen,
+      this.editor.element,
+      this.busyOverlay,
+    );
 
     const relayout = (): void => this.layoutFrame();
     window.addEventListener('resize', relayout);
@@ -212,11 +250,15 @@ class App {
   // ---- rendering -------------------------------------------------------
 
   private render(): void {
-    const { screen, sheetOpen, busy, level } = this.state;
+    const { screen, sheetOpen, menuOpen, busy, level } = this.state;
     this.startScreen.hidden = screen !== 'start';
     this.cameraScreen.hidden = screen !== 'camera';
     this.capturedScreen.hidden = screen !== 'captured';
+    // The editor shows/hides itself in open()/close(); it owns a display copy.
     this.sheetBackdrop.hidden = !(screen === 'captured' && sheetOpen);
+    this.menuBackdrop.hidden = !(screen === 'captured' && menuOpen);
+    this.editButton.setAttribute('aria-expanded', String(menuOpen));
+    this.editButton.classList.toggle('primary', menuOpen);
     this.busyOverlay.hidden = !busy;
     for (const l of COMPRESSION_LEVELS) {
       this.levelButtons[l].setAttribute('aria-checked', String(l === level));
@@ -300,6 +342,7 @@ class App {
     this.renderPreview();
     this.state.screen = 'captured';
     this.state.sheetOpen = false;
+    this.state.menuOpen = false;
     this.render();
   }
 
@@ -319,6 +362,43 @@ class App {
 
   private closeSheet(): void {
     this.state.sheetOpen = false;
+    this.render();
+  }
+
+  private toggleMenu(): void {
+    this.state.menuOpen = !this.state.menuOpen;
+    this.render();
+  }
+
+  private closeMenu(): void {
+    this.state.menuOpen = false;
+    this.render();
+  }
+
+  private openEditor(): void {
+    const capture = this.capture;
+    if (!capture) return;
+    this.state.menuOpen = false;
+    this.state.screen = 'edit';
+    this.render();
+    this.editor.open(capture);
+  }
+
+  /**
+   * Leaves the crop/rotate view. With a frame: store it, baking any rotation
+   * into the image first. Without: discard the pending edits.
+   */
+  private closeEditor(frame: Frame | null): void {
+    this.editor.close();
+    if (frame && this.capture) {
+      try {
+        this.capture = bakeRotation(this.capture, frame);
+      } catch (error) {
+        console.error('Drehen fehlgeschlagen', error);
+      }
+      this.renderPreview();
+    }
+    this.state.screen = 'captured';
     this.render();
   }
 
@@ -370,6 +450,7 @@ class App {
 
   private discardEverything(): void {
     this.stopSession();
+    this.editor.close();
     this.discardCapture();
   }
 }
