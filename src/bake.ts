@@ -1,7 +1,7 @@
 /**
- * Bakes edits into the captured image: the frame rotation (v0.2 confirm),
- * brightness/contrast (v0.3 confirm) and displaced corners (v0.7 confirm).
- * Cropping never touches pixels.
+ * Bakes edits into the captured image on confirm: the frame rotation,
+ * displaced corners (shear) and the tone chain (brightness, contrast,
+ * temperature, grayscale). Cropping never touches pixels.
  */
 
 import type { Capture, Frame } from './model';
@@ -41,10 +41,10 @@ export function bakeRotation(capture: Capture, frame: Frame): Capture {
 }
 
 /**
- * Confirm of the crop/rotate view (v0.7): a frame whose corners are displaced
- * is baked by warping the whole image so that the quadrilateral becomes the
+ * Confirm of the crop/rotate view: a frame whose corners are displaced is
+ * baked by warping the whole image so that the quadrilateral becomes the
  * upright target rectangle (rotation included, one resample). Otherwise the
- * v0.2 rotation path runs unchanged. The result never carries corner offsets.
+ * plain rotation path (`bakeRotation`) runs. The result never carries corner offsets.
  */
 export function bakeFrame(capture: Capture, frame: Frame): Capture {
   if (!hasCornerOffsets(frame)) {
@@ -74,7 +74,7 @@ function contextSupportsFilter(): boolean {
 
 /**
  * Bakes brightness, contrast, temperature and grayscale into the whole
- * captured image (v0.3 confirm), so that later cropping stays consistent.
+ * captured image, so that later cropping stays consistent.
  * Neutral values return the capture untouched. The frame is unchanged; the
  * old canvas is released.
  *

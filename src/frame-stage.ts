@@ -1,6 +1,6 @@
 /**
- * The zoomable stage of the captured view and the brightness/contrast view
- * (v0.9): the frame region of a capture letterboxed into the stage, drawn
+ * The zoomable stage of the captured view and the brightness/contrast view:
+ * the frame region of a capture letterboxed into the stage, drawn
  * from the full-resolution image through the composed transform, with a
  * pinch/pan/double-tap zoom in front of it. One finger pans while zoomed in;
  * in the fitted view one-finger pointers are handed to the owner (the page

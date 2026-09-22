@@ -2,10 +2,10 @@
  * MobileScan app shell: start -> camera (or camera error) -> captured ->
  * (share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
  * One in-memory state machine, plain DOM, no persistence. A scan is a list of
- * pages of which only the current one holds a full-resolution canvas (v0.5).
+ * pages of which only the current one holds a full-resolution canvas.
  * The captured screen (`CapturedView`) shows the current page on a zoomable
- * `FrameStage` (v0.9); the zoom is view state only and resets whenever the
- * view is entered.
+ * `FrameStage`; the zoom is view state only and resets whenever the view is
+ * entered.
  */
 
 import * as icons from './icons';
@@ -56,7 +56,7 @@ export const NOTICE_MS = 2000;
 export { CAMERA_ERROR_LABELS } from './error-view';
 
 /**
- * v0.10: the strict detection on the still, from the static frame. Null when
+ * The strict detection on the still, from the static frame. Null when
  * no document is found or the detection fails; the capture then keeps the
  * static frame. Runs synchronously (about 0.5 MP of work).
  */
@@ -321,7 +321,7 @@ export class App {
       this.leaveTimers.delete(to);
     }
     toEl.hidden = false;
-    // Entering the captured view always starts from the fitted view (v0.9).
+    // Entering the captured view always starts from the fitted view.
     if (to === 'captured') this.capturedView.stage.resetZoom();
     toEl.classList.remove('leaving');
     toEl.classList.add('entering');
@@ -523,8 +523,8 @@ export class App {
       ? scaleFrame(liveFrame, image.width / session.width)
       : initialFrame(image.width, image.height);
     this.cameraView.close();
-    // v0.10: the still is detected once more from the static frame; the live
-    // result is only feedback (the still is grabbed later than the last video frame).
+    // The still is detected once more from the static frame; the live result
+    // is only feedback (the still is grabbed later than the last video frame).
     const detected = liveDetect ? detectStill(image, staticFrame) : null;
     // Appended after the last page; the previous current page was parked by [+].
     // The page starts with the static frame; a detected document is baked in below.

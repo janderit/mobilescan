@@ -1,4 +1,4 @@
-// ---- v0.7: homographies ------------------------------------------------------
+// ---- homographies ------------------------------------------------------------
 
 import type { Point } from './model';
 import type { Quad } from './affine';

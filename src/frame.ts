@@ -97,7 +97,7 @@ export function frameSourceRect(frame: UprightFrame): Rect {
   };
 }
 
-// ---- v0.2: rotated frames, crop handles ---------------------------------------
+// ---- rotated frames, crop handles ---------------------------------------------
 //
 // Angle convention: `Frame.angle` is the rotation of the frame relative to the
 // image, in radians, positive = clockwise on screen (image coordinates are
@@ -144,7 +144,7 @@ export function frameCorners(frame: Frame): Point[] {
   return rectLocalCorners(frame).map((p) => fromFrameLocal(frame, p));
 }
 
-// ---- v0.7: displaced corners (shear) ----------------------------------------
+// ---- displaced corners (shear) ----------------------------------------------
 //
 // `Frame.corners` holds one frame-local offset per corner. The quadrilateral
 // they describe is what the crop/rotate view draws and what the shear bake
@@ -358,7 +358,7 @@ export function handleLocalPosition(frame: Frame, handle: Handle): Point {
 }
 
 /**
- * Shear mode (v0.7): moves one corner's offset by a frame-local delta. The
+ * Shear: moves one corner's offset by a frame-local delta. The
  * result is clamped so the quadrilateral stays convex, its edges keep the
  * minimum length and the corner does not leave the image beyond where it
  * already is. Like a crop corner drag, each axis is clamped on its own, so

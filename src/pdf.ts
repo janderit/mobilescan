@@ -28,8 +28,7 @@ export interface PdfImage {
 
 /**
  * A4 page whose orientation follows the image, with the image scaled uniformly
- * to fit inside it and centred. Borders on one axis are accepted
- * (decision 2026-09-22).
+ * to fit inside it and centred. Borders on one axis are accepted.
  */
 export function pageLayout(imageWidth: number, imageHeight: number): PageLayout {
   const portrait = imageHeight >= imageWidth;

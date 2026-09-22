@@ -1,6 +1,6 @@
 /**
  * The zoom gesture tracker shared by the captured stage, the crop/rotate
- * view and the brightness/contrast view (v0.9): two tracked pointers for
+ * view and the brightness/contrast view: two tracked pointers for
  * the pinch, an optional one-finger pan while zoomed in, and the double tap.
  * Pointer Events only; the view forwards its pointer events and skips its
  * own handling when the tracker consumed one.

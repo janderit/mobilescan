@@ -1,5 +1,5 @@
 /**
- * Homography resampling for the shear bake (v0.7, see intent/v0.7-shear.md
+ * Homography resampling for the shear bake (see intent/v0.7-shear.md
  * "Confirm"): a JavaScript pixel loop with bilinear sampling, working in
  * strips of output rows so that only the source pixels and one strip are held
  * at a time. No WebGL: one code path, testable in Vitest, no texture limits.

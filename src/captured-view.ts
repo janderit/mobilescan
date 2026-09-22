@@ -1,6 +1,6 @@
 /**
- * Captured screen: the page header ([previous] "n/m" [next], v0.5), the
- * current page's frame region on a zoomable `FrameStage` (v0.9), the button
+ * Captured screen: the page header ([previous] "n/m" [next]), the current
+ * page's frame region on a zoomable `FrameStage`, the button
  * bar (back, share, edit, [+]), the edit popover and the share sheet with the
  * three-level compression control. Pure presentation: the app shell keeps the
  * open flags and the level in its state and hands them to `render`; every

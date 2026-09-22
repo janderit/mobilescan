@@ -1,5 +1,5 @@
 /**
- * Page store of a multi-page scan (v0.5): parking pages that leave the
+ * Page store of a multi-page scan: parking pages that leave the
  * screen as a full-image JPEG blob and waking them back into a canvas, so
  * that only the current page holds a full-resolution canvas.
  */
@@ -7,7 +7,7 @@
 import type { Capture, Page } from './model';
 import { createCanvas, encodeJpegBlob, releaseCanvas } from './canvas';
 
-/** JPEG quality of a parked page (decision 2026-09-22). */
+/** JPEG quality of a parked page: high enough that repeated park/wake cycles stay invisible. */
 export const PARK_QUALITY = 0.95;
 
 /** Wraps a freshly captured image into a page: live canvas, nothing parked yet. */

@@ -132,7 +132,7 @@ export function sizeDisplayCanvas(canvas: HTMLCanvasElement, width: number, heig
  * CSS pixels through `transform` (image pixel -> CSS pixel), at `dpr` device
  * pixels per CSS pixel. Only the visible source rectangle (optionally
  * limited further to `clip`, in image pixels) is handed to `drawImage`, so
- * the cost follows the stage size, not the zoom level (v0.9).
+ * the cost follows the stage size, not the zoom level.
  */
 export function drawImageThrough(
   ctx: CanvasRenderingContext2D,

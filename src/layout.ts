@@ -88,7 +88,7 @@ export function visibleImageRect(
   };
 }
 
-// ---- v0.2: rotation baking ----------------------------------------------------
+// ---- rotation baking ----------------------------------------------------------
 
 /** Result of the rotation-baking layout (pure maths; the drawing happens elsewhere). */
 export interface BakeLayout {
@@ -164,7 +164,7 @@ export function viewTransform(
   return translateAffine(scaleAffine(rotate, scale), offsetX, offsetY);
 }
 
-// ---- v0.7: the shear bake layout ----------------------------------------------
+// ---- the shear bake layout ----------------------------------------------------
 
 /** Output margin around the target rectangle, as a fraction of its size per side. */
 export const WARP_MARGIN = 0.25;

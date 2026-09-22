@@ -1,7 +1,7 @@
 /**
  * Camera screen: the live video, the frame overlay (shade with a hole and the
  * dashed outline, which is the static DIN rectangle or, with a document found,
- * its corners, v0.10), back, shutter and the live-detect toggle. Owns the
+ * its corners), back, shutter and the live-detect toggle. Owns the
  * camera session while open and the `LiveDetector` loop. The capture itself
  * (`takePhoto`) stays in the app shell, which reads `session`, `liveFrame`
  * and `liveFound` at the shutter.
@@ -50,7 +50,7 @@ export class CameraView {
   private readonly detectButton: HTMLButtonElement;
   private readonly liveDetector: LiveDetector;
   private liveState: TrackerState = { found: false, corners: null };
-  /** v0.10: live document detection and auto-bake on capture; session state only. */
+  /** Live document detection and auto-bake on capture; session state only. */
   private detectEnabled = true;
 
   private currentSession: CameraSession | null = null;

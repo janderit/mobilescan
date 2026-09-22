@@ -1,14 +1,14 @@
 /**
- * Loupe cluster (v0.6): while a drag is in progress in the crop/rotate view,
+ * Loupe cluster: while a drag is in progress in the crop/rotate view,
  * round magnified views of the affected frame corners sit in the centre of
  * the stage. This class owns the `.loupe-cluster` element with its four
  * `.loupe` canvases and draws them; the pure geometry (corner selection,
  * cluster layout, suppression, the loupe's affine transform) lives in
  * `loupe.ts`.
  *
- * Zoom (v0.9): no loupes while the zoomed view is already as magnified as a
- * loupe would be. The caller passes the composed view scale and the loupe
- * scale in; both depend on its transforms.
+ * No loupes while the zoomed view is already as magnified as a loupe would
+ * be. The caller passes the composed view scale and the loupe scale in;
+ * both depend on its transforms.
  */
 
 import type { Frame } from './model';
@@ -67,7 +67,7 @@ export class LoupeCluster {
   /**
    * Decides at drag start which corners to magnify and where the cluster
    * goes. No loupes while the zoomed view is already as magnified as a
-   * loupe would be (v0.9): `viewScale` is the composed view's CSS pixels per
+   * loupe would be: `viewScale` is the composed view's CSS pixels per
    * image pixel, `loupeScale` the loupe's.
    */
   begin(

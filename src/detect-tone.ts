@@ -2,7 +2,7 @@
  * Tone detection: a luminance histogram of the inner 90 % of the frame
  * region, the paper background (the mode above 0.4) and the print (the 1st
  * percentile) read from it, and the brightness and contrast that make the
- * v0.3 filter chain map the background to white and the print to black.
+ * tone filter chain map the background to white and the print to black.
  * Pure maths on `ImageData`; the tone view renders the working copy.
  */
 
@@ -92,7 +92,7 @@ export function paperLevels(histogram: Uint32Array): { background: number; text:
 
 /**
  * Brightness and contrast that map `background` to white and `text` to black
- * through the v0.3 chain `out = c * (b * in) + 0.5 * (1 - c)`, clamped to
+ * through the tone chain `out = c * (b * in) + 0.5 * (1 - c)`, clamped to
  * the slider ranges; grayscale on, temperature neutral.
  */
 export function toneForLevels(background: number, text: number): Tone {

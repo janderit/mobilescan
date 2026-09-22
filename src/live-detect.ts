@@ -1,6 +1,6 @@
 /**
- * Live document detection on the camera view (v0.10): runs the v0.8 edge
- * search on the video element a few times per second, from the static camera
+ * Live document detection on the camera view: runs the paper edge search
+ * on the video element a few times per second, from the static camera
  * frame, feeds a `DetectionTracker` and reports its state. Pure scheduling
  * and glue; the maths lives in detect.ts, the rendering in canvas.ts.
  */

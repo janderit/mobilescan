@@ -1,5 +1,5 @@
 /**
- * Data model shared by all versions (see intent/v0.1-mvp.md "Data model" and
+ * Data model of the scan (see intent/v0.1-mvp.md "Data model" and
  * intent/v0.5-multi-page.md "Document and pages").
  * Held in memory only; never persisted.
  */
@@ -22,10 +22,10 @@ interface FrameRect {
  * page is an `UprightFrame`.
  */
 export interface Frame extends FrameRect {
-  /** radians, 0 in v0.1 */
+  /** radians, 0 when upright */
   angle: number;
   /**
-   * v0.7: displacement of each corner (nw, ne, se, sw) from the rectangle
+   * Shear: displacement of each corner (nw, ne, se, sw) from the rectangle
    * corner, in frame-local coordinates (the rectangle's own axes, before
    * rotation). Absent means the frame is the rectangle; when present, at
    * least one offset reaches `CORNER_EPSILON` (`withCorners` in `frame.ts`
@@ -65,7 +65,7 @@ export interface Capture {
 }
 
 /**
- * One scanned page (v0.5). Exactly the current page holds a full-resolution
+ * One scanned page. Exactly the current page holds a full-resolution
  * canvas in `image`; every other page is parked as a full-image JPEG in
  * `blob`. `width`/`height` are the full image size in pixels, needed for the
  * frame maths while the page is parked.
@@ -81,7 +81,7 @@ export interface Page {
   dirty: boolean;
 }
 
-/** Soft limit: [+] is disabled at this many pages (decision 2026-09-22). */
+/** Soft limit: [+] is disabled at this many pages. */
 export const MAX_PAGES = 20;
 
 /** Compression levels of the share sheet. */

@@ -19,7 +19,7 @@ export * from './detect-tone';
 
 /**
  * Buffers a caller may keep between detection runs so that a run allocates
- * neither a working canvas nor the luminance arrays (v0.10 live detection).
+ * neither a working canvas nor the luminance arrays (the live detection loop).
  * Create one with `createDetectScratch`, drop it with `releaseDetectScratch`.
  */
 export interface DetectScratch extends DetectBuffers {

@@ -5,7 +5,7 @@
  * This module is the barrel: the maths lives in
  * - `angles.ts`: angle normalisation, right angles, skew clamping;
  * - `affine.ts`: `Point`/`Quad` tuples and 2D affine transforms;
- * - `homography.ts`: projective transforms (v0.7 shear);
+ * - `homography.ts`: projective transforms (the shear bake);
  * - `frame.ts`: the frame model and its editing (crop, shear, rotation);
  * - `layout.ts`: screen transforms and the bake layouts (rotation, warp).
  */

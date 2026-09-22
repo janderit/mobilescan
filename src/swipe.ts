@@ -1,5 +1,5 @@
 /**
- * Horizontal swipe detection for the page navigation (v0.5): a pointer drag
+ * Horizontal swipe detection for the page navigation: a pointer drag
  * whose horizontal part dominates counts as a swipe; taps and vertical
  * gestures do not.
  */

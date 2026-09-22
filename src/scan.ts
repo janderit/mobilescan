@@ -1,5 +1,5 @@
 /**
- * The scan in progress (v0.5): the list of pages in capture order and which
+ * The scan in progress: the list of pages in capture order and which
  * one is on screen. Only the current page holds a full-resolution canvas; the
  * others are parked as JPEG blobs (`pages.ts`). Pure bookkeeping, no DOM: the
  * app shell decides when to show the busy overlay and how to report failures.

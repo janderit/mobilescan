@@ -1,5 +1,5 @@
 /**
- * Brightness/contrast/temperature/grayscale maths (v0.3). Pure functions, no DOM.
+ * Brightness/contrast/temperature/grayscale maths. Pure functions, no DOM.
  *
  * The preview is the CSS filter chain
  *   brightness(b) contrast(c) url(#temperature) grayscale(1)
@@ -16,7 +16,7 @@
 export interface Tone {
   /** 0.5 .. 1.5, neutral 1 */
   brightness: number;
-  /** 0.5 .. 4.0, neutral 1 (widened from 2.0 in v0.8 so auto can reach full black and white) */
+  /** 0.5 .. 4.0, neutral 1 (the upper end lets auto reach full black and white) */
   contrast: number;
   /** -1 (cool) .. 1 (warm), neutral 0 */
   temperature: number;
@@ -71,7 +71,7 @@ export function clampTone(key: ToneKey, value: number): number {
 
 /**
  * Position of a value in its range as a fraction 0..1 (the slider position,
- * tick and fill). Piecewise-linear with neutral at the centre (v0.8), so the
+ * tick and fill). Piecewise-linear with neutral at the centre, so the
  * asymmetric contrast range keeps its tick in the middle.
  */
 export function toneFraction(key: ToneKey, value: number): number {

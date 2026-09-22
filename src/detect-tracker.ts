@@ -13,9 +13,9 @@ export const MISSES_TO_LOSE = 2;
 /**
  * A run agrees with the tracked outline when no corner is further from it
  * than this fraction of the frame width. 3 % is about 80 px on a 2700 px
- * frame: a hand held still passes, a hand moving over the page does not
- * (raised from 1 % after the first device test, where hand tremor between
- * runs kept the outline from ever locking).
+ * frame: a hand held still passes, a hand moving over the page does not.
+ * A tighter tolerance lets hand tremor between runs keep the outline from
+ * ever locking.
  */
 export const AGREE_FRACTION = 0.03;
 /** Weight of the newest run in the smoothed corners. */

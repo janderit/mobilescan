@@ -1,23 +1,17 @@
 /**
- * Brightness/contrast view (v0.3): the frame region of the capture, one
- * slider, segmented [brightness|contrast|temperature], a grayscale toggle,
- * [back] and [confirm].
+ * Brightness/contrast view: the frame region of the capture on a zoomable
+ * `FrameStage`, one slider, segmented [brightness|contrast|temperature], a
+ * grayscale toggle, the wand button, [back] and [confirm]. The wand measures
+ * the paper background and the print in the frame region (`detect.ts`) and
+ * sets grayscale, brightness and contrast so the page becomes black on
+ * white. Every value is a pending edit; the caller bakes them on confirm.
+ * The zoom resets whenever the view opens.
  *
- * The preview is a CSS filter chain on the display canvas, so dragging the
+ * The preview is a CSS filter chain on the stage canvas, so dragging the
  * slider costs no pixel work. The temperature step is an inline SVG
  * feColorMatrix referenced by url(); its values are updated while dragging.
- * The caller bakes the values on confirm.
- *
  * The native range input runs a linear 0..1000 scale; `toneFraction` and its
- * inverse map it to the selected value with neutral at the centre (v0.8).
- *
- * Auto (v0.8): the wand button measures the paper background and the print
- * in the frame region (`detect.ts`) and sets grayscale, brightness and
- * contrast so the page becomes black on white, as a pending edit.
- *
- * Zoom (v0.9): the stage is a `FrameStage`, so the frame region can be
- * pinched, panned and double-tapped; the filter chain applies to the stage
- * canvas as before. The zoom resets whenever the view opens.
+ * inverse map it to the selected value with neutral at the centre.
  */
 
 import * as icons from './icons';

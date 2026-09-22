@@ -1,5 +1,5 @@
 /**
- * Pinch zoom maths (v0.9, see intent/v0.9-zoom.md): a similarity transform
+ * Pinch zoom maths (see intent/v0.9-zoom.md): a similarity transform
  * in CSS pixels of the stage, applied on top of a view's fitted transform.
  * Pure functions, no DOM; the gesture tracking lives in `zoom-gesture.ts`.
  *

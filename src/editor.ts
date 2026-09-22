@@ -1,33 +1,29 @@
 /**
- * Crop/rotate view (v0.2): the full captured image with the frame at its
- * stored geometry. Crop drags and fine rotation only change a pending copy of
- * the frame; the caller bakes the rotation on confirm.
+ * Crop/rotate view: the full captured image with the frame drawn over it as
+ * a quadrilateral. Every edit only changes a pending copy of the frame: in
+ * crop mode the edge handles crop the underlying rectangle and the corner
+ * handles move each corner on its own (shear); in rotate mode one finger
+ * turns the frame; the 90° button turns in steps; the wand button looks for
+ * the paper edges near the frame (`detect.ts`) and replaces the pending
+ * frame with what it found, or shows the notice and leaves it alone. The
+ * frame body cannot be dragged. The caller bakes rotation and shear on
+ * confirm.
  *
  * Display: the image is turned by the frame's base angle (multiples of 90°),
  * so 90° taps are visible, and letterboxed into the stage. During fine
- * rotation the image stays still and only the frame turns (decision 2026-09-22).
+ * rotation the image stays still and only the frame turns. While a drag is
+ * in progress, magnified views of the affected frame corners sit in the
+ * centre of the stage (`LoupeCluster` in `loupe-cluster.ts`, geometry in
+ * `loupe.ts`).
  *
- * Loupes (v0.6): while a drag is in progress, magnified views of the affected
- * frame corners sit in the centre of the stage (`LoupeCluster` in
- * `loupe-cluster.ts`, geometry in `loupe.ts`).
- *
- * Shear (v0.7): in crop mode the corner handles move each frame corner on its
- * own while the edge handles keep cropping the underlying rectangle; the frame
- * is drawn as that quadrilateral in both modes and the caller warps the image
- * on confirm. The frame body cannot be dragged.
- *
- * Auto (v0.8): the wand button looks for the paper edges near the frame
- * (`detect.ts`) and replaces the pending frame with what it found; nothing
- * found shows the notice and leaves the frame alone.
- *
- * Zoom (v0.9): a two-finger pinch zooms and pans the stage, and a second
- * finger cancels the drag in progress. Zoomed in, one finger pans too, but
- * only in crop mode and only when it lands clear of every handle's touch
- * target: the handles keep priority, and in rotate mode one finger always
- * rotates. `transform` is the composed `zoom ∘ fitted` transform,
- * so hit tests, handles, shade and loupes need no zoom-specific code. During
- * a gesture the canvas moves with a CSS transform on its wrapper and the
- * overlay is recomputed per move; on release the canvas is redrawn crisply.
+ * Zoom: a two-finger pinch zooms and pans the stage, and a second finger
+ * cancels the drag in progress. Zoomed in, one finger pans too, but only in
+ * crop mode and only when it lands clear of every handle's touch target: the
+ * handles keep priority, and in rotate mode one finger always rotates.
+ * `transform` is the composed `zoom ∘ fitted` transform, so hit tests,
+ * handles, shade and loupes need no zoom-specific code. During a gesture the
+ * canvas moves with a CSS transform on its wrapper and the overlay is
+ * recomputed per move; on release the canvas is redrawn crisply.
  */
 
 import * as icons from './icons';
@@ -334,7 +330,7 @@ export class CropRotateView {
     this.gesture.drawn();
   }
 
-  // ---- zoom (v0.9) -----------------------------------------------------
+  // ---- zoom ------------------------------------------------------------
 
   /**
    * What the zoom must keep on the stage: the image and the frame's bounding
@@ -531,7 +527,7 @@ export class CropRotateView {
     }
   }
 
-  // ---- loupes (v0.6) ---------------------------------------------------
+  // ---- loupes ----------------------------------------------------------
 
   /** Hands the drag to the cluster: which corners to magnify, where, and at what scales. */
   private beginLoupes(drag: Drag, startView: Point): void {

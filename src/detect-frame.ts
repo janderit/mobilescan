@@ -43,7 +43,7 @@ const direction = (a: Point, b: Point): number => Math.atan2(b.y - a.y, b.x - a.
  * The frame that best represents four detected corners (image pixels):
  * rotation from the two long edges (clamped to the skew range around the
  * current base), width and height from the mean opposite sides, the centre
- * at the centroid, and the residual per corner as its offset (v0.7).
+ * at the centroid, and the residual per corner as its shear offset.
  */
 export function frameFromCorners(corners: Quad, current: Frame): Frame {
   return frameFromCornersDetailed(corners, current).frame;
@@ -118,7 +118,7 @@ export function detectFrameDetailed(
   return { frame, found: edges.found, clamped };
 }
 
-/** The wand's detection (v0.8): partial results are applied. */
+/** The wand's detection: partial results are applied. */
 export function detectFrame(
   working: ImageData,
   layout: WorkingLayout,
@@ -130,7 +130,7 @@ export function detectFrame(
 }
 
 /**
- * The live detection's rule (v0.10): all four edges found and the rotation
+ * The live detection's rule: all four edges found and the rotation
  * inside the skew range, otherwise there is no document.
  */
 export function detectFrameStrict(

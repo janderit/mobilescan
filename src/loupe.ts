@@ -1,5 +1,5 @@
 /**
- * Loupe geometry (v0.6, see intent/v0.6-loupes.md): which frame corners a
+ * Loupe geometry (see intent/v0.6-loupes.md): which frame corners a
  * drag magnifies, where the loupes sit on the stage, and the affine transform
  * that maps image pixels into one loupe. Pure maths, no DOM, so it can be
  * unit tested against the main view's transform.
