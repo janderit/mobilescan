@@ -1,20 +1,24 @@
 /**
- * MobileScan v0.2: start -> camera -> captured -> (share sheet | edit popover -> crop/rotate) -> busy.
- * One in-memory state machine, plain DOM, no persistence.
+ * MobileScan v0.3: start -> camera -> captured -> (share sheet | edit popover ->
+ * crop/rotate | brightness/contrast) -> busy. One in-memory state machine, plain DOM,
+ * no persistence.
  */
 
 import './styles.css';
 import * as icons from './icons';
 import type { Capture, CompressionLevel } from './model';
+import { iconButton } from './ui';
 import { coverTransform, frameToViewRect, initialFrame, scaleFrame, visibleImageRect } from './geometry';
 import type { Frame } from './model';
 import { COMPRESSION_LEVELS, DEFAULT_COMPRESSION } from './quality';
 import { captureStill, startCamera, stopCamera, type CameraSession } from './camera';
 import { buildPdfFile, releaseCanvas, renderFrame, sharePdf } from './share';
 import { CropRotateView } from './editor';
-import { bakeRotation } from './bake';
+import { ToneView } from './tone-view';
+import type { Tone } from './tone';
+import { bakeRotation, bakeTone } from './bake';
 
-type Screen = 'start' | 'camera' | 'captured' | 'edit';
+type Screen = 'start' | 'camera' | 'captured' | 'edit' | 'tone';
 
 interface State {
   screen: Screen;
@@ -45,16 +49,6 @@ const LEVEL_CAPTIONS: Record<CompressionLevel, string> = {
   medium: 'Mittel',
   large: 'Groß',
 };
-
-function iconButton(icon: string, label: string, className = ''): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = `icon-button ${className}`.trim();
-  button.setAttribute('aria-label', label);
-  button.innerHTML = icon;
-  button.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-  return button;
-}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -98,6 +92,9 @@ class App {
 
   // Crop/rotate
   private readonly editor: CropRotateView;
+
+  // Brightness/contrast
+  private readonly toneView: ToneView;
 
   // Share sheet
   private readonly sheetBackdrop: HTMLElement;
@@ -154,14 +151,13 @@ class App {
     this.editButton.setAttribute('aria-haspopup', 'menu');
     this.editButton.addEventListener('click', () => this.toggleMenu());
 
-    // Edit popover: crop/rotate (active), brightness/contrast (v0.3, disabled).
+    // Edit popover: crop/rotate, brightness/contrast.
     const cropItem = iconButton(icons.crop, 'Zuschneiden und drehen', 'compact');
     cropItem.setAttribute('role', 'menuitem');
     cropItem.addEventListener('click', () => this.openEditor());
     const brightnessItem = iconButton(icons.brightness, 'Helligkeit und Kontrast', 'compact');
     brightnessItem.setAttribute('role', 'menuitem');
-    brightnessItem.setAttribute('aria-disabled', 'true');
-    brightnessItem.tabIndex = -1;
+    brightnessItem.addEventListener('click', () => this.openToneView());
     const menu = el('div', 'popover', cropItem, brightnessItem);
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', 'Bearbeiten');
@@ -221,6 +217,15 @@ class App {
       onConfirm: (frame) => this.closeEditor(frame),
     });
 
+    // Brightness/contrast
+    this.toneView = new ToneView(
+      {
+        onCancel: () => this.closeToneView(null),
+        onConfirm: (tone) => this.closeToneView(tone),
+      },
+      PREVIEW_MAX_LONG_SIDE,
+    );
+
     // Busy
     this.busyOverlay = el('div', 'busy');
     this.busyOverlay.innerHTML = icons.spinner;
@@ -233,6 +238,7 @@ class App {
       this.cameraScreen,
       this.capturedScreen,
       this.editor.element,
+      this.toneView.element,
       this.busyOverlay,
     );
 
@@ -254,7 +260,7 @@ class App {
     this.startScreen.hidden = screen !== 'start';
     this.cameraScreen.hidden = screen !== 'camera';
     this.capturedScreen.hidden = screen !== 'captured';
-    // The editor shows/hides itself in open()/close(); it owns a display copy.
+    // The edit views show/hide themselves in open()/close(); they own display copies.
     this.sheetBackdrop.hidden = !(screen === 'captured' && sheetOpen);
     this.menuBackdrop.hidden = !(screen === 'captured' && menuOpen);
     this.editButton.setAttribute('aria-expanded', String(menuOpen));
@@ -402,6 +408,33 @@ class App {
     this.render();
   }
 
+  private openToneView(): void {
+    const capture = this.capture;
+    if (!capture) return;
+    this.state.menuOpen = false;
+    this.state.screen = 'tone';
+    this.render();
+    this.toneView.open(capture);
+  }
+
+  /**
+   * Leaves the brightness/contrast view. With values: bake them into the
+   * whole image. Without: discard the pending values.
+   */
+  private closeToneView(tone: Tone | null): void {
+    this.toneView.close();
+    if (tone && this.capture) {
+      try {
+        this.capture = bakeTone(this.capture, tone);
+      } catch (error) {
+        console.error('Anpassen fehlgeschlagen', error);
+      }
+      this.renderPreview();
+    }
+    this.state.screen = 'captured';
+    this.render();
+  }
+
   private selectLevel(level: CompressionLevel): void {
     this.state.level = level;
     this.render();
@@ -451,6 +484,7 @@ class App {
   private discardEverything(): void {
     this.stopSession();
     this.editor.close();
+    this.toneView.close();
     this.discardCapture();
   }
 }

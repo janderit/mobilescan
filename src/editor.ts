@@ -31,6 +31,7 @@ import {
   type Point,
 } from './geometry';
 import { releaseCanvas } from './share';
+import { iconButton, segmentButton } from './ui';
 
 export type EditMode = 'crop' | 'rotate';
 
@@ -59,16 +60,6 @@ function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<strin
   const node = document.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
   return node;
-}
-
-function iconButton(icon: string, label: string, className = ''): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = `icon-button ${className}`.trim();
-  button.setAttribute('aria-label', label);
-  button.innerHTML = icon;
-  button.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-  return button;
 }
 
 const degrees = (radians: number): number => (radians * 180) / Math.PI;
@@ -135,13 +126,7 @@ export class CropRotateView {
       ['rotate', icons.rotate, 'Drehen'],
     ];
     for (const [mode, icon, label] of modes) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.setAttribute('role', 'radio');
-      button.setAttribute('aria-label', label);
-      button.innerHTML = icon;
-      button.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-      button.addEventListener('click', () => this.setMode(mode));
+      const button = segmentButton(icon, label, () => this.setMode(mode));
       this.modeButtons[mode] = button;
       segmented.append(button);
     }

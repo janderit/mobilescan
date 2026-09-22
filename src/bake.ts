@@ -1,11 +1,12 @@
 /**
- * Bakes the frame rotation into the captured image (v0.2 confirm).
- * Cropping never touches pixels; only a non-zero angle gets here.
+ * Bakes edits into the captured image: the frame rotation (v0.2 confirm) and
+ * brightness/contrast (v0.3 confirm). Cropping never touches pixels.
  */
 
 import type { Capture, Frame } from './model';
 import { bakeLayout } from './geometry';
 import { releaseCanvas } from './share';
+import { applyTonePixels, isNeutralTone, toneFilter, toneLookup, type Tone } from './tone';
 
 /**
  * Returns a capture whose frame is upright. For angle 0 the image is reused
@@ -34,4 +35,49 @@ export function bakeRotation(capture: Capture, frame: Frame): Capture {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   releaseCanvas(image);
   return { image: canvas, frame: layout.frame };
+}
+
+/** Rows per strip in the pixel-loop fallback, bounding the ImageData held at once. */
+const FALLBACK_STRIP_ROWS = 256;
+
+function contextSupportsFilter(): boolean {
+  return (
+    typeof CanvasRenderingContext2D === 'function' &&
+    'filter' in CanvasRenderingContext2D.prototype
+  );
+}
+
+/**
+ * Bakes brightness/contrast into the whole captured image (v0.3 confirm), so
+ * that later cropping stays consistent. Neutral values return the capture
+ * untouched. The frame is unchanged; the old canvas is released.
+ */
+export function bakeTone(capture: Capture, tone: Tone): Capture {
+  if (isNeutralTone(tone)) {
+    return capture;
+  }
+  const { image, frame } = capture;
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('2d context unavailable');
+  }
+  if (contextSupportsFilter()) {
+    ctx.filter = toneFilter(tone);
+    ctx.drawImage(image, 0, 0);
+    ctx.filter = 'none';
+  } else {
+    ctx.drawImage(image, 0, 0);
+    const lut = toneLookup(tone);
+    for (let y = 0; y < canvas.height; y += FALLBACK_STRIP_ROWS) {
+      const rows = Math.min(FALLBACK_STRIP_ROWS, canvas.height - y);
+      const strip = ctx.getImageData(0, y, canvas.width, rows);
+      applyTonePixels(strip.data, tone, lut);
+      ctx.putImageData(strip, 0, y);
+    }
+  }
+  releaseCanvas(image);
+  return { image: canvas, frame };
 }
