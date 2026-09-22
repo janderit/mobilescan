@@ -106,7 +106,7 @@ the document while aiming, and the capture should apply the shear correction on 
 | Topic | Decision |
 |---|---|
 | Algorithm | The v0.8 edge search, unchanged, run on the live video from the static camera frame. The search band around the frame is the search area; the user still frames the page. Full-image detection stays out. |
-| Confidence | Strict: all four edges found, convex, large enough, rotation within the skew range. Plus stability: three agreeing runs (corners within 1 % of the frame width) before the outline shows, two misses before it hides. |
+| Confidence | Strict: all four edges found, convex, large enough, rotation within the skew range. Plus stability: three agreeing runs (corners within 3 % of the frame width of the tracked outline; 1 % in the first draft never locked on a handheld phone) before the outline shows, two misses before it hides. |
 | Feedback | The dashed frame becomes a polygon: grey static rectangle, or green quadrilateral on the detected corners. A short vibration when it turns green. No text, no auto-capture. |
 | What the bake uses | The still, detected once more with the strict rule, not the last live result: the still is grabbed later than the last preview frame and the hand moves. A miss on the still gives the v0.9 capture; a miss after a green outline shows the v0.4 warning briefly. |
 | Auto-bake | Rotation and shear are baked right after capture behind the busy overlay, margins kept as with confirm in the crop/rotate view. A wrong result costs one retake (back), which is cheaper than a visit to the editor for every scan. |

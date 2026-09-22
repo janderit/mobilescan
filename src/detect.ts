@@ -468,8 +468,14 @@ export function detectFrameStrict(
 export const HITS_TO_FIND = 3;
 /** Misses in a row before a found document is lost. */
 export const MISSES_TO_LOSE = 2;
-/** Two runs agree when no corner moved more than this fraction of the frame width. */
-export const AGREE_FRACTION = 0.01;
+/**
+ * A run agrees with the tracked outline when no corner is further from it
+ * than this fraction of the frame width. 3 % is about 80 px on a 2700 px
+ * frame: a hand held still passes, a hand moving over the page does not
+ * (raised from 1 % after the first device test, where hand tremor between
+ * runs kept the outline from ever locking).
+ */
+export const AGREE_FRACTION = 0.03;
 /** Weight of the newest run in the smoothed corners. */
 export const SMOOTHING = 0.5;
 
@@ -498,8 +504,11 @@ export class DetectionTracker {
 
   /** Feeds one run: the detected frame's corners, or null for no document. */
   push(quad: Quad | null): TrackerState {
-    const agrees = quad !== null && this.previous !== null && quadsAgree(quad, this.previous, this.tolerance);
-    // A miss keeps the last hit, so a hit after a single miss can still agree with it.
+    // Compared with the smoothed outline while found (steadier than a single
+    // run), else with the last hit; a miss keeps the last hit, so a hit after
+    // a single miss can still agree with it.
+    const reference = this.smoothed ?? this.previous;
+    const agrees = quad !== null && reference !== null && quadsAgree(quad, reference, this.tolerance);
     if (quad !== null) this.previous = quad;
     this.hits = quad === null ? 0 : agrees ? this.hits + 1 : 1;
     if (agrees) {

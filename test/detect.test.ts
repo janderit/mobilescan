@@ -355,16 +355,17 @@ describe('detection tracker (v0.10)', () => {
     expect(lost.corners).toBeNull();
   });
 
-  it('treats a hit whose corner moved 2 % of the frame width as a miss', () => {
+  it('treats a hit whose corner moved 5 % of the frame width as a miss, tolerates 2 %', () => {
     const t = tracker();
     t.push(quad());
     t.push(quad());
     expect(t.push(quad()).found).toBe(true);
-    expect(t.push(quad(20, 0)).found).toBe(true); // first miss
-    expect(t.push(quad(40, 0)).found).toBe(false); // second miss: lost
+    expect(t.push(quad(20, 0)).found).toBe(true); // 2 %: agrees (hand tremor)
+    expect(t.push(quad(70, 0)).found).toBe(true); // first miss
+    expect(t.push(quad(120, 0)).found).toBe(false); // second miss: lost
     // Two more agreeing runs with the new position, three hits in all: found again.
-    expect(t.push(quad(41, 0)).found).toBe(false);
-    expect(t.push(quad(42, 0)).found).toBe(true);
+    expect(t.push(quad(121, 0)).found).toBe(false);
+    expect(t.push(quad(122, 0)).found).toBe(true);
   });
 
   it('smooths the corners with half weight on the newest run', () => {
