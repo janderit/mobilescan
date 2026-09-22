@@ -10,7 +10,7 @@
 import * as icons from './icons';
 import type { Frame, Point, UprightFrame } from './model';
 import { iconButton, el, prefersReducedMotion, svgEl } from './ui';
-import { coverTransform, frameToViewRect, initialFrame, visibleImageRect, type CoverTransform, type Quad } from './geometry';
+import { coverTransform, frameToViewRect, initialFrame, visibleImageRect, type CoverTransform } from './geometry';
 import { stopCamera, type CameraSession } from './camera';
 import type { TrackerState } from './detect';
 import { LiveDetector } from './live-detect';
@@ -182,10 +182,11 @@ export class CameraView {
     const cover = this.cover;
     if (!frame || !cover) return;
     const toView = (p: Point): Point => ({ x: p.x * cover.scale + cover.offsetX, y: p.y * cover.scale + cover.offsetY });
-    const found = this.detectEnabled && this.liveState.found && this.liveState.corners !== null;
+    const corners = this.detectEnabled && this.liveState.found ? this.liveState.corners : null;
+    const found = corners !== null;
     let points: Point[];
-    if (found) {
-      points = (this.liveState.corners as Quad).map(toView);
+    if (corners) {
+      points = corners.map(toView);
     } else {
       const rect = frameToViewRect(frame, cover);
       points = [

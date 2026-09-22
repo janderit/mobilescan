@@ -43,7 +43,6 @@ import {
   handleLocalPosition,
   hitHandle,
   invertAffine,
-  mapQuad,
   moveCorner,
   quadCorners,
   quadLocalCorners,
@@ -202,9 +201,6 @@ export class CropRotateView {
   open(capture: Capture): void {
     this.capture = capture;
     this.pending = { ...capture.frame };
-    if (capture.frame.corners) {
-      this.pending.corners = mapQuad(capture.frame.corners, (p) => ({ ...p }));
-    }
     this.mode = 'crop';
     this.drag = null;
     this.drawnBase = null;

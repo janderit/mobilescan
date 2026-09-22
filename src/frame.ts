@@ -63,8 +63,10 @@ export function scaleFrame<F extends Frame>(frame: F, factor: number): F {
     width: frame.width * factor,
     height: frame.height * factor,
   };
+  delete scaled.corners;
   if (frame.corners) {
-    scaled.corners = mapQuad(frame.corners, (p) => ({ x: p.x * factor, y: p.y * factor }));
+    const corners = mapQuad(frame.corners, (p) => ({ x: p.x * factor, y: p.y * factor }));
+    if (offsetsMatter(corners)) scaled.corners = corners;
   }
   return scaled;
 }
@@ -166,14 +168,31 @@ export function cornerOffsets(frame: Frame): Quad {
   return frame.corners ?? ZERO_QUAD;
 }
 
-/** True when at least one corner is displaced by more than `CORNER_EPSILON`. */
+/** True when at least one offset reaches `CORNER_EPSILON`. */
+function offsetsMatter(offsets: Quad): boolean {
+  return offsets.some((p) => Math.abs(p.x) >= CORNER_EPSILON || Math.abs(p.y) >= CORNER_EPSILON);
+}
+
+/** True when at least one corner is displaced by at least `CORNER_EPSILON`; equals `frame.corners !== undefined`. */
 export function hasCornerOffsets(frame: Frame): boolean {
-  return cornerOffsets(frame).some((p) => Math.abs(p.x) >= CORNER_EPSILON || Math.abs(p.y) >= CORNER_EPSILON);
+  return offsetsMatter(cornerOffsets(frame));
 }
 
 /** The frame with its corner offsets dropped (a rectangle again). */
 export function withoutCorners(frame: Frame): Frame {
   return { cx: frame.cx, cy: frame.cy, width: frame.width, height: frame.height, angle: frame.angle };
+}
+
+/**
+ * The frame with the given corner offsets, stored only when at least one
+ * reaches `CORNER_EPSILON`; otherwise `corners` stays absent. Every frame
+ * built with offsets goes through here so that "`corners` is present" and
+ * `hasCornerOffsets` agree.
+ */
+export function withCorners(frame: Frame, offsets: Quad): Frame {
+  const result = withoutCorners(frame);
+  if (offsetsMatter(offsets)) result.corners = offsets;
+  return result;
 }
 
 /** The displaced corners in frame-local coordinates: rectangle corner plus offset. */
@@ -239,15 +258,13 @@ export function rotate90Right(frame: Frame): Frame {
     height: frame.width,
     angle: normalizeAngle(frame.angle - QUARTER),
   };
-  if (frame.corners) {
-    // The frame axes turn by -90° relative to the image, so a frame-local
-    // point p of the old frame is R(+90°) p in the new one: (x, y) -> (-y, x).
-    // Old nw lands on new ne, ne on se, se on sw, sw on nw.
-    const [nw, ne, se, sw] = frame.corners;
-    const turn = (p: Point): Point => ({ x: -p.y, y: p.x });
-    turned.corners = [turn(sw), turn(nw), turn(ne), turn(se)];
-  }
-  return turned;
+  if (!frame.corners) return turned;
+  // The frame axes turn by -90° relative to the image, so a frame-local
+  // point p of the old frame is R(+90°) p in the new one: (x, y) -> (-y, x).
+  // Old nw lands on new ne, ne on se, se on sw, sw on nw.
+  const [nw, ne, se, sw] = frame.corners;
+  const turn = (p: Point): Point => ({ x: -p.y, y: p.x });
+  return withCorners(turned, [turn(sw), turn(nw), turn(ne), turn(se)]);
 }
 
 /**
@@ -306,24 +323,6 @@ function clampMove(
   return frameAt(lo);
 }
 
-/**
- * Translates the frame by an image-space delta, clamped so it does not leave
- * the image (or, if it already sticks out because of rotation, does not stick out further).
- */
-export function moveFrame(
-  frame: Frame,
-  dx: number,
-  dy: number,
-  imageWidth: number,
-  imageHeight: number,
-): Frame {
-  return clampMove(
-    (t) => ({ ...frame, cx: frame.cx + dx * t, cy: frame.cy + dy * t }),
-    imageWidth,
-    imageHeight,
-  );
-}
-
 /** Crop handles: edge midpoints and corners. */
 export type Handle = 'n' | 'e' | 's' | 'w' | 'ne' | 'se' | 'sw' | 'nw';
 
@@ -379,7 +378,7 @@ export function moveCorner(
   if (index < 0) return frame;
   const full = moveCornerAlong(frame, index, localDx, localDy, imageWidth, imageHeight);
   const wanted = cornerOffsets(frame)[index]!;
-  const got = full.corners![index]!;
+  const got = cornerOffsets(full)[index]!;
   if (Math.abs(got.x - wanted.x - localDx) < EPSILON && Math.abs(got.y - wanted.y - localDy) < EPSILON) {
     return full;
   }
@@ -403,7 +402,8 @@ function moveCornerAlong(
     );
     return { ...frame, corners };
   };
-  return clampMove(frameAt, imageWidth, imageHeight);
+  const moved = clampMove(frameAt, imageWidth, imageHeight);
+  return withCorners(moved, cornerOffsets(moved));
 }
 
 /**

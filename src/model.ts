@@ -27,9 +27,11 @@ export interface Frame extends FrameRect {
   /**
    * v0.7: displacement of each corner (nw, ne, se, sw) from the rectangle
    * corner, in frame-local coordinates (the rectangle's own axes, before
-   * rotation). Absent or all zero means the frame is the rectangle. Only the
-   * pending frame of the crop/rotate view ever carries non-zero offsets; a
-   * confirmed frame never does.
+   * rotation). Absent means the frame is the rectangle; when present, at
+   * least one offset reaches `CORNER_EPSILON` (`withCorners` in `frame.ts`
+   * keeps it that way, so `hasCornerOffsets` and `corners !== undefined`
+   * agree). Only the pending frame of the crop/rotate view ever carries
+   * offsets; a confirmed frame never does.
    */
   corners?: [Point, Point, Point, Point] | undefined;
 }

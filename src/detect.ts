@@ -38,6 +38,7 @@ import {
   quadValid,
   rectLocalCorners,
   toFrameLocal,
+  withCorners,
   type Affine,
   type Quad,
   type Rect,
@@ -426,8 +427,7 @@ export function frameFromCornersDetailed(corners: Quad, current: Frame): { frame
     const offset = { x: q.x - local[i]!.x, y: q.y - local[i]!.y };
     return Math.hypot(offset.x, offset.y) < MIN_CORNER_OFFSET ? { x: 0, y: 0 } : offset;
   }) as Quad;
-  if (offsets.some((p) => p.x !== 0 || p.y !== 0)) rect.corners = offsets;
-  return { frame: rect, clamped };
+  return { frame: withCorners(rect, offsets), clamped };
 }
 
 /** Outcome of a frame detection with the details the strict rule needs. */
