@@ -130,6 +130,30 @@ describe('App', () => {
     expect(app.screen).toBe('camera');
   });
 
+  it('stops a camera that finished starting while the page was hidden', async () => {
+    let resolveStart: () => void = () => {};
+    startCameraMock.mockImplementationOnce(
+      (video) =>
+        new Promise<CameraSession>((resolve) => {
+          resolveStart = () => resolve(fakeSession(video));
+        }),
+    );
+    root.querySelector<HTMLButtonElement>('.start-button')!.click();
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(stopCamera).not.toHaveBeenCalled();
+    resolveStart();
+    await flush();
+    expect(stopCamera).toHaveBeenCalledTimes(1);
+    expect(app.screen).toBe('camera');
+    expect(root.querySelector('.camera-frame')?.hasAttribute('hidden')).toBe(true);
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    startCameraMock.mockImplementationOnce((video) => Promise.resolve(fakeSession(video)));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush();
+    expect(startCameraMock).toHaveBeenCalledTimes(2);
+  });
+
   it('fades: the new screen is shown at once, the old one hidden after the fade', async () => {
     vi.useFakeTimers();
     startCameraMock.mockImplementation((video) => Promise.resolve(fakeSession(video)));

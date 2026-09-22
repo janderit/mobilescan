@@ -3,28 +3,29 @@
  * (share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
  * One in-memory state machine, plain DOM, no persistence. A scan is a list of
  * pages of which only the current one holds a full-resolution canvas (v0.5).
- * The captured view shows the current page on a zoomable `FrameStage` (v0.9);
- * the zoom is view state only and resets whenever the view is entered.
+ * The captured screen (`CapturedView`) shows the current page on a zoomable
+ * `FrameStage` (v0.9); the zoom is view state only and resets whenever the
+ * view is entered.
  */
 
 import * as icons from './icons';
 import type { CompressionLevel, Frame, Page } from './model';
 import { afterPaint, el, iconButton, prefersReducedMotion } from './ui';
 import { hasCornerOffsets, initialFrame, scaleFrame } from './geometry';
-import { COMPRESSION_LEVELS, DEFAULT_COMPRESSION } from './quality';
-import { cameraErrorKind, captureStill, startCamera, type CameraErrorKind, type CameraSession } from './camera';
+import { DEFAULT_COMPRESSION } from './quality';
+import { cameraErrorKind, captureStill, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
 import { buildPdfFile, sharePdf } from './share';
 import type { UpdateChecker } from './update';
 import { applyCapture, asCapture, newPage } from './pages';
 import { Scan } from './scan';
 import { CameraView, vibrate } from './camera-view';
+import { CapturedView } from './captured-view';
 import { CropRotateView } from './editor';
 import { ToneView } from './tone-view';
 import { isNeutralTone, type Tone } from './tone';
 import { bakeFrame, bakeTone, frameNeedsBake } from './bake';
 import { BackTrap } from './navigation';
-import { swipeDirection } from './swipe';
-import { FrameStage } from './frame-stage';
+import type { SwipeDirection } from './swipe';
 import type { ZoomState } from './zoom';
 import { detectFrameIn, detectFrameStrict } from './detect';
 
@@ -49,36 +50,11 @@ export const FADE_MS = 150;
 /** How long the icon-only error notice stays on screen. */
 export const NOTICE_MS = 2000;
 
-const LEVEL_ICONS: Record<CompressionLevel, string> = {
-  small: icons.fileSmall,
-  medium: icons.fileMedium,
-  large: icons.fileLarge,
-};
-
-const LEVEL_LABELS: Record<CompressionLevel, string> = {
-  small: 'Kleine Datei',
-  medium: 'Mittlere Datei',
-  large: 'Große Datei',
-};
-
-/** Short captions under the file icons; the sheet is not self-explanatory with icons alone. */
-const LEVEL_CAPTIONS: Record<CompressionLevel, string> = {
-  small: 'Klein',
-  medium: 'Mittel',
-  large: 'Groß',
-};
-
 export const CAMERA_ERROR_LABELS: Record<CameraErrorKind, string> = {
   denied: 'Kamerazugriff verweigert',
   unavailable: 'Keine Kamera verfügbar',
   insecure: 'Kamera nur über eine sichere Verbindung verfügbar',
 };
-
-/** Disabled look and no action, without removing the button from the focus order. */
-function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
-  button.setAttribute('aria-disabled', String(disabled));
-  button.disabled = disabled;
-}
 
 /**
  * v0.10: the strict detection on the still, from the static frame. Null when
@@ -132,26 +108,13 @@ export class App {
   private readonly errorStatus: HTMLElement;
 
   // Captured
-  private readonly capturedStage: FrameStage;
-  private readonly menuBackdrop: HTMLElement;
-  private readonly editButton: HTMLButtonElement;
-  private readonly addButton: HTMLButtonElement;
-  private readonly pageHeader: HTMLElement;
-  private readonly previousButton: HTMLButtonElement;
-  private readonly nextButton: HTMLButtonElement;
-  private readonly pagePosition: HTMLElement;
-  /** Start of a pointer drag over the captured stage, for swipe detection. */
-  private swipeStart: { id: number; x: number; y: number } | null = null;
+  private readonly capturedView: CapturedView;
 
   // Crop/rotate
   private readonly editor: CropRotateView;
 
   // Brightness/contrast
   private readonly toneView: ToneView;
-
-  // Share sheet
-  private readonly sheetBackdrop: HTMLElement;
-  private readonly levelButtons: Record<CompressionLevel, HTMLButtonElement>;
 
   // Overlays
   private readonly busyOverlay: HTMLElement;
@@ -212,96 +175,21 @@ export class App {
     retryButton.addEventListener('click', () => void this.openCamera());
     const errorScreen = el('section', 'screen screen-error', errorBack, this.errorStatus, retryButton);
 
-    // Captured: the frame region on a zoomable stage. In the fitted view a
-    // one-finger swipe over the image moves between pages like the arrows;
-    // zoomed in, one finger pans instead.
-    this.capturedStage = new FrameStage('captured-canvas', {
-      onPointerDown: (event) => this.onSwipeStart(event),
-      onPointerEnd: (event) => this.onSwipeEnd(event),
-      onGestureStart: () => {
-        this.swipeStart = null;
-      },
+    // Captured
+    this.capturedView = new CapturedView({
+      onBack: () => void this.backFromCaptured(),
+      onShare: () => this.openSheet(),
+      onSelectLevel: (level) => this.selectLevel(level),
+      onCloseSheet: () => this.closeSheet(),
+      onConfirmShare: () => void this.confirmShare(),
+      onToggleMenu: () => this.toggleMenu(),
+      onCloseMenu: () => this.closeMenu(),
+      onEdit: () => this.openEditor(),
+      onTone: () => this.openToneView(),
+      onAddPage: () => void this.addPage(),
+      onShowPage: (index) => void this.showPage(index),
+      onSwipe: (direction) => this.onSwipe(direction),
     });
-    const capturedBack = iconButton(icons.arrowLeft, 'Zurück');
-    capturedBack.addEventListener('click', () => void this.backFromCaptured());
-    const shareButton = iconButton(icons.share, 'Teilen', 'primary');
-    shareButton.addEventListener('click', () => this.openSheet());
-    this.editButton = iconButton(icons.edit, 'Bearbeiten');
-    this.editButton.setAttribute('aria-haspopup', 'menu');
-    this.editButton.addEventListener('click', () => this.toggleMenu());
-    this.addButton = iconButton(icons.addPage, 'Weitere Seite scannen');
-    this.addButton.addEventListener('click', () => void this.addPage());
-
-    // Page header: [previous] "n/m" [next], only with two or more pages.
-    this.previousButton = iconButton(icons.chevronLeft, 'Vorherige Seite', 'compact page-arrow');
-    this.previousButton.addEventListener('click', () => void this.showPage(this.scan.currentIndex - 1));
-    this.nextButton = iconButton(icons.chevronRight, 'Nächste Seite', 'compact page-arrow');
-    this.nextButton.addEventListener('click', () => void this.showPage(this.scan.currentIndex + 1));
-    this.pagePosition = el('span', 'page-position');
-    this.pagePosition.setAttribute('aria-live', 'polite');
-    this.pageHeader = el('div', 'page-header', this.previousButton, this.pagePosition, this.nextButton);
-    this.pageHeader.hidden = true;
-
-    // Edit popover: crop/rotate, brightness/contrast.
-    const cropItem = iconButton(icons.crop, 'Zuschneiden und drehen', 'compact');
-    cropItem.setAttribute('role', 'menuitem');
-    cropItem.addEventListener('click', () => this.openEditor());
-    const brightnessItem = iconButton(icons.brightness, 'Helligkeit und Kontrast', 'compact');
-    brightnessItem.setAttribute('role', 'menuitem');
-    brightnessItem.addEventListener('click', () => this.openToneView());
-    const menu = el('div', 'popover', cropItem, brightnessItem);
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Bearbeiten');
-    this.menuBackdrop = el('div', 'popover-backdrop', menu);
-    this.menuBackdrop.addEventListener('click', (event) => {
-      if (event.target === this.menuBackdrop) this.closeMenu();
-    });
-
-    // Share sheet
-    const segmented = el('div', 'segmented');
-    segmented.setAttribute('role', 'radiogroup');
-    segmented.setAttribute('aria-label', 'Dateigröße');
-    this.levelButtons = {} as Record<CompressionLevel, HTMLButtonElement>;
-    for (const level of COMPRESSION_LEVELS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.setAttribute('role', 'radio');
-      button.setAttribute('aria-label', LEVEL_LABELS[level]);
-      button.innerHTML = LEVEL_ICONS[level];
-      button.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-      button.append(el('span', 'segmented-caption', LEVEL_CAPTIONS[level]));
-      button.addEventListener('click', () => this.selectLevel(level));
-      this.levelButtons[level] = button;
-      segmented.append(button);
-    }
-    const cancelButton = iconButton(icons.close, 'Abbrechen');
-    cancelButton.addEventListener('click', () => this.closeSheet());
-    const confirmButton = iconButton(icons.check, 'Bestätigen', 'primary');
-    confirmButton.addEventListener('click', () => void this.confirmShare());
-    const sheet = el(
-      'div',
-      'sheet',
-      el('div', 'sheet-handle'),
-      segmented,
-      el('div', 'button-bar', cancelButton, confirmButton),
-    );
-    sheet.setAttribute('role', 'dialog');
-    sheet.setAttribute('aria-modal', 'true');
-    sheet.setAttribute('aria-label', 'Teilen');
-    this.sheetBackdrop = el('div', 'sheet-backdrop', sheet);
-    this.sheetBackdrop.addEventListener('click', (event) => {
-      if (event.target === this.sheetBackdrop) this.closeSheet();
-    });
-
-    const capturedScreen = el(
-      'section',
-      'screen screen-captured',
-      this.pageHeader,
-      this.capturedStage.element,
-      el('div', 'button-bar', capturedBack, shareButton, this.editButton, this.addButton),
-      this.menuBackdrop,
-      this.sheetBackdrop,
-    );
 
     // Crop/rotate
     this.editor = new CropRotateView({
@@ -341,7 +229,7 @@ export class App {
       start: startScreen,
       camera: this.cameraView.element,
       error: errorScreen,
-      captured: capturedScreen,
+      captured: this.capturedView.element,
       edit: this.editor.element,
       tone: this.toneView.element,
     };
@@ -353,7 +241,7 @@ export class App {
       startScreen,
       this.cameraView.element,
       errorScreen,
-      capturedScreen,
+      this.capturedView.element,
       this.editor.element,
       this.toneView.element,
       this.flash,
@@ -402,7 +290,7 @@ export class App {
 
   /** Zoom state of the captured view, for tests. */
   get capturedZoom(): ZoomState {
-    return this.capturedStage.zoom;
+    return this.capturedView.stage.zoom;
   }
 
   /** Releases resources and detaches global listeners (tests). */
@@ -410,7 +298,8 @@ export class App {
     this.discardEverything();
     this.listeners.abort();
     this.cameraView.dispose();
-    this.capturedStage.dispose();
+    this.capturedView.dispose();
+    this.editor.dispose();
     for (const timer of this.leaveTimers.values()) clearTimeout(timer);
     this.leaveTimers.clear();
     if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
@@ -426,18 +315,18 @@ export class App {
       if (screen === 'start') this.checkForUpdate();
     }
     this.updateButton.hidden = !this.updateAvailable;
-    this.sheetBackdrop.hidden = !(screen === 'captured' && sheetOpen);
-    this.menuBackdrop.hidden = !(screen === 'captured' && menuOpen);
-    this.editButton.setAttribute('aria-expanded', String(menuOpen));
-    this.editButton.classList.toggle('primary', menuOpen);
     this.busyOverlay.hidden = !busy;
     this.errorStatus.setAttribute('aria-label', CAMERA_ERROR_LABELS[cameraError]);
-    for (const l of COMPRESSION_LEVELS) {
-      this.levelButtons[l].setAttribute('aria-checked', String(l === level));
-    }
-    this.renderPageHeader();
+    this.capturedView.render({
+      active: screen === 'captured',
+      count: this.scan.count,
+      current: this.scan.currentIndex,
+      isFull: this.scan.isFull,
+      menuOpen,
+      sheetOpen,
+      level,
+    });
     if (screen === 'camera') this.cameraView.layout();
-    if (screen === 'captured') this.capturedStage.layout();
     this.backTrap.setActive(screen !== 'start');
   }
 
@@ -455,7 +344,7 @@ export class App {
     }
     toEl.hidden = false;
     // Entering the captured view always starts from the fitted view (v0.9).
-    if (to === 'captured') this.capturedStage.resetZoom();
+    if (to === 'captured') this.capturedView.stage.resetZoom();
     toEl.classList.remove('leaving');
     toEl.classList.add('entering');
     fromEl.classList.remove('entering');
@@ -472,25 +361,14 @@ export class App {
     this.leaveTimers.set(from, timer);
   }
 
-  /** Page navigation above the image; hidden with a single page. */
-  private renderPageHeader(): void {
-    const count = this.scan.count;
-    const current = this.scan.currentIndex;
-    this.pageHeader.hidden = count <= 1;
-    this.pagePosition.textContent = count > 0 ? `${current + 1}/${count}` : '';
-    setDisabled(this.previousButton, current <= 0);
-    setDisabled(this.nextButton, current >= count - 1);
-    setDisabled(this.addButton, this.scan.isFull);
-  }
-
   /** Shows the current page's frame region on the captured stage, fitted (the zoom resets). */
   private renderPreview(): void {
     const capture = this.scan.currentCapture();
     if (!capture) {
-      this.capturedStage.clear();
+      this.capturedView.stage.clear();
       return;
     }
-    this.capturedStage.show(capture);
+    this.capturedView.stage.show(capture);
   }
 
   /** Shows the warning icon briefly over the current view. */
@@ -613,7 +491,12 @@ export class App {
     }
     if (this.state.screen !== 'camera') {
       // Left the camera while it was starting.
-      this.cameraView.close();
+      stopCamera(session);
+      return;
+    }
+    if (document.visibilityState === 'hidden') {
+      // Backgrounded while it was starting: the visibility handler restarts it on return.
+      stopCamera(session);
       return;
     }
     this.cameraView.open(session);
@@ -719,7 +602,7 @@ export class App {
     }
     // The previous page, or the next one if the first page was removed.
     const next = this.scan.removeCurrent();
-    this.capturedStage.clear();
+    this.capturedView.stage.clear();
     await this.switchToPage(next);
   }
 
@@ -732,7 +615,7 @@ export class App {
     this.state.sheetOpen = false;
     await this.runBusyAsync(() => this.scan.park(page), 'Seite konnte nicht abgelegt werden');
     if (page.image) return; // parking failed; stay on the page
-    this.capturedStage.clear();
+    this.capturedView.stage.clear();
     await this.openCamera('captured');
   }
 
@@ -747,19 +630,11 @@ export class App {
     await this.switchToPage(index);
   }
 
-  private onSwipeStart(event: PointerEvent): void {
-    if (!event.isPrimary) return;
-    this.swipeStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
-  }
-
-  private onSwipeEnd(event: PointerEvent): void {
-    const start = this.swipeStart;
-    if (!start || event.pointerId !== start.id) return;
-    this.swipeStart = null;
+  /** A swipe over the fitted image: next page on left, previous on right, unless something is open. */
+  private onSwipe(direction: SwipeDirection): void {
     if (this.state.busy || this.state.menuOpen || this.state.sheetOpen || this.scan.count < 2) return;
-    const direction = swipeDirection(event.clientX - start.x, event.clientY - start.y);
     if (direction === 'left') void this.showPage(this.scan.currentIndex + 1);
-    else if (direction === 'right') void this.showPage(this.scan.currentIndex - 1);
+    else void this.showPage(this.scan.currentIndex - 1);
   }
 
   /** Makes a page current: wakes it if parked and redraws the preview. */
@@ -923,7 +798,7 @@ export class App {
   /** Drops every page of the scan; nothing is retained. */
   private discardPages(): void {
     this.scan.discard();
-    this.capturedStage.clear();
+    this.capturedView.stage.clear();
   }
 
   private discardEverything(): void {
