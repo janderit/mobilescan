@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
@@ -38,7 +39,17 @@ function versionFile(build: string): Plugin {
   };
 }
 
-const build = gitShortHash();
+/**
+ * Four hex characters hashed from the build moment (ISO datetime), so a redeploy
+ * of an unchanged version and commit still differs from the running build and
+ * the update check (src/update.ts) picks it up.
+ */
+function buildMomentHash(): string {
+  return createHash('sha256').update(new Date().toISOString()).digest('hex').slice(0, 4);
+}
+
+/** `<git short hash>.<build moment hash>`, e.g. `1cdbefd.3f9a`. */
+const build = `${gitShortHash()}.${buildMomentHash()}`;
 
 export default defineConfig(({ mode }) => ({
   // The app lives under /app/ so the site root stays free for the product page.

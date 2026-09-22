@@ -30,8 +30,10 @@ TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
   `$DEPLOY_PATH/app/` (the PWA is served at https://mobilescan.app/app/, Vite `base: '/app/'`)
   and `site/index.html` to `$DEPLOY_PATH/index.html` (the product page at the site root).
   Reads `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env` (copy `.env.example` to start one).
-- The start page shows `v<package.json version> (<git short hash>)`, injected at build time via
-  `define` in `vite.config.ts`, so it is visible on the phone whether an update has arrived.
+- The start page shows `v<package.json version> (<git short hash>.<build moment hash>)`, injected
+  at build time via `define` in `vite.config.ts`, so it is visible on the phone whether an update
+  has arrived. The build moment hash is the first four hex characters of the SHA-256 of the build's
+  ISO datetime, so a redeploy of an unchanged version and commit still counts as an update.
   Bump `version` in `package.json` when releasing.
 - Updates: the build also writes `dist/version.json` (`{ version, build }`, plugin `versionFile`
   in `vite.config.ts`). It is excluded from the service worker precache and served `no-cache`
