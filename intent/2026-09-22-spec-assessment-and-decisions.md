@@ -68,7 +68,7 @@ Taken with Philip when the four follow-up milestones were defined
 | Back on a multi-page captured view | Removes the current page and shows its neighbour; with one page it is the v0.4 retake. No separate delete button. |
 | New page position | Appended after the last page; no reordering (spec). |
 | Page position text | "n/m" in the header is the second text exception after Klein / Mittel / Groß. |
-| Loupe counts | Corner drag 1, edge drag 2, body drag and rotation 4, shear corner 1. Cluster centred on the stage, suppressed when the drag starts inside it. |
+| Loupe counts | Corner drag 1, edge drag 2, body drag and rotation 4, shear corner 1. Cluster centred on the stage; when the drag starts inside it, the cluster is shifted away from the finger (vertically, else horizontally) and only suppressed if nothing fits. Initially plain suppression, changed after the first device test showed it hid the four-loupe grid for most body drags. |
 | Shear semantics | Four independent corners define a homography (perspective correction), baked together with rotation on confirm. Corner offsets live in frame-local coordinates on the pending frame only. |
 | Shear bake result | The whole image is warped and the margins kept (like rotation baking), output bounded to the target rectangle plus 25 % per side and the pixel cap. Not cropped to the quadrilateral. |
 | Warp engine | JavaScript pixel loop with bilinear sampling, strips of 256 rows. No WebGL: one code path, testable, no texture limits. Budget 3 s for 16 MP behind the busy overlay. |

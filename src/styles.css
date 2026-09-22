@@ -453,6 +453,40 @@ button {
   stroke-dasharray: 4 6;
 }
 
+/* Loupes (v0.6): magnified frame corners shown in the stage centre during a drag. */
+.loupe-cluster {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.loupe-cluster[hidden] {
+  display: none;
+}
+
+.loupe {
+  position: absolute;
+  box-sizing: border-box;
+  width: 96px;
+  height: 96px;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #ffffff;
+  background: var(--surface-alt);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.loupe[hidden] {
+  display: none;
+}
+
+.loupe canvas {
+  display: block;
+  width: 90px;
+  height: 90px;
+}
+
 .button-bar-compact {
   gap: 8px;
   justify-content: space-between;

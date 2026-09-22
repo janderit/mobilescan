@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast), v0.4 (UI polish) and
-v0.5 (multi-page PDFs) are implemented. The rest of the second roadmap is defined but not yet
-implemented: v0.6 (loupe previews while dragging), v0.7 (shear / perspective correction) and v0.8
-(auto-detect for frame and tone); see `intent/v0.6-loupes.md` .. `intent/v0.8-auto-detect.md`
+v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast), v0.4 (UI polish),
+v0.5 (multi-page PDFs) and v0.6 (loupe previews while dragging) are implemented. The rest of the
+second roadmap is defined but not yet implemented: v0.7 (shear / perspective correction) and v0.8
+(auto-detect for frame and tone); see `intent/v0.7-shear.md` and `intent/v0.8-auto-detect.md`
 and the "v0.5 to v0.8 decisions" section of the decisions file. The repository contains the product spec (`README.md`),
 design intent documents with per-version definitions, icons and mockups (`intent/`), and the
 TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
@@ -74,9 +74,10 @@ The capture frame is the central concept:
 - **Share** opens a sheet with a three-level compression control (JPEG quality 0.5 / 0.75 / 0.92), then embeds the frame region on a fixed A4 page scaled to fit (orientation follows the crop; borders on one axis are accepted) and hands the PDF to the Web Share API. Success returns to the start page and discards the image; cancel keeps the captured view.
 - **Polish (v0.4).** Camera failures show an icon-only error screen (warning, retry, back) whose status label names the cause. Share and bake failures show the warning icon briefly over the current view and leave the image untouched. Every screen change pushes a history entry and `popstate` acts as the current screen's back button (`src/navigation.ts`), so hardware back never leaves the app mid-scan. Screens cross-fade in 150 ms, the popover scales in from the edit button, a white flash plus vibration confirms the shutter; all off under `prefers-reduced-motion`. Baking runs behind the busy overlay, deferred until the overlay has painted. Backgrounding the page stops the camera stream and returning restarts it. The manifest carries a maskable icon rendered by `scripts/render-icons.mjs`. The app shell lives in `src/app.ts` (`src/main.ts` only mounts it) so jsdom tests can drive it.
 - **Multi-page (v0.5).** The app holds a list of pages (`src/model.ts` `Page`, `src/pages.ts`) instead of one capture. [+] on the captured view parks the current page (full image as JPEG blob at quality 0.95, canvas released) and opens the camera; the new capture is appended and becomes current. Only the current page holds a full-resolution canvas; switching pages parks one and wakes the other behind the busy overlay. A page is re-encoded only if a bake changed it (`dirty`); cropping only updates the frame. With two or more pages a header [previous] "n/m" [next] sits above the image ("n/m" is the second text exception). Back with several pages removes the current page and shows the previous one (the next one if the first was removed); with one page it is the v0.4 retake. Camera back after [+] returns to the page shown before. Share encodes every page's frame region in order and builds one A4 page per scan (`buildPdf` takes a list). Soft limit 20 pages, [+] disabled at the limit. Page switches push no history entry.
+- **Loupes (v0.6).** While a drag is in progress in the crop/rotate view, round magnified views of the affected frame corners sit in the centre of the stage: corner handle 1, edge handle 2 (side by side for n/s, stacked for e/w), body drag and fine rotation 4 in a 2x2 grid in corner order. The pure geometry lives in `src/loupe.ts` (corner selection, cluster layout, suppression, the loupe's affine transform); `src/editor.ts` owns four `<canvas>` loupes created with the view. Each loupe is centred on its frame corner in image coordinates, drawn with the main view's base rotation at 3x the view scale, capped at 2 device pixels per image pixel; per `pointermove` it copies a source square of about 100 image pixels via `drawImage` and strokes the whole frame polygon through the loupe transform. Loupes appear on the first `pointermove` (a tap shows nothing), vanish on `pointerup`/`pointercancel`, never take pointer events, and when the drag starts within 24 px of the centred cluster the cluster is shifted away from the finger (vertically, else horizontally; `placeLoupes`), suppressed only if no shift fits the stage. No fade, no data model change.
 
 Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → edit popover (crop/rotate, brightness/contrast).
-Crop/rotate view: [back] [crop|rotate] [rotate 90 right] [confirm]. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [confirm].
+Crop/rotate view: [back] [crop|rotate] [rotate 90 right] [confirm], with loupes in the stage centre during drags. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [confirm].
 
 ## Version roadmap
 

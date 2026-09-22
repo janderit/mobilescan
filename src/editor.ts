@@ -6,6 +6,9 @@
  * Display: the image is turned by the frame's base angle (multiples of 90°),
  * so 90° taps are visible, and letterboxed into the stage. During fine
  * rotation the image stays still and only the frame turns (decision 2026-09-22).
+ *
+ * Loupes (v0.6): while a drag is in progress, magnified views of the affected
+ * frame corners sit in the centre of the stage (geometry in `loupe.ts`).
  */
 
 import * as icons from './icons';
@@ -31,6 +34,19 @@ import {
   type Point,
 } from './geometry';
 import { releaseCanvas } from './canvas';
+import {
+  CORNERS,
+  LOUPE_DIAMETER,
+  LOUPE_INNER,
+  clusterBounds,
+  loupeCorners,
+  loupeScale,
+  loupeSourceRect,
+  loupeTransform,
+  placeLoupes,
+  type Corner,
+  type LoupePlacement,
+} from './loupe';
 import { iconButton, segmentButton } from './ui';
 
 export type EditMode = 'crop' | 'rotate';
@@ -56,6 +72,18 @@ type Drag =
   | { kind: 'resize'; start: Frame; handle: Handle; startLocal: Point }
   | { kind: 'rotate'; startAngle: number; base: number; startTouch: number; centreView: Point; radius: number };
 
+/** Loupe state of one drag: where the cluster goes, or nothing if suppressed. */
+interface LoupeState {
+  layout: LoupePlacement[];
+  /** Set on the first pointermove; a tap without movement shows no loupe. */
+  shown: boolean;
+}
+
+/** Frame line style inside a loupe, matching `.edit-frame` in the stylesheet. */
+const FRAME_STROKE = '#facc15';
+const FRAME_LINE_WIDTH = 3;
+const FRAME_DASH = [10, 8];
+
 function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string> = {}): SVGElementTagNameMap[K] {
   const node = document.createElementNS(SVG_NS, tag);
   for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
@@ -76,6 +104,8 @@ export class CropRotateView {
   private readonly handles: Map<Handle, SVGCircleElement>;
   private readonly arc: SVGPathElement;
   private readonly modeButtons: Record<EditMode, HTMLButtonElement>;
+  private readonly loupeCluster: HTMLElement;
+  private readonly loupes: Map<Corner, { element: HTMLElement; canvas: HTMLCanvasElement }>;
 
   private capture: Capture | null = null;
   private pending: Frame | null = null;
@@ -84,6 +114,7 @@ export class CropRotateView {
   /** Base angle the display canvas was last drawn with. */
   private drawnBase: number | null = null;
   private drag: Drag | null = null;
+  private loupeState: LoupeState | null = null;
 
   constructor(private readonly callbacks: EditorCallbacks) {
     this.canvas = document.createElement('canvas');
@@ -105,9 +136,25 @@ export class CropRotateView {
     this.arc.setAttribute('visibility', 'hidden');
     this.overlay.append(this.shade, this.frameGroup, this.arc);
 
+    this.loupeCluster = document.createElement('div');
+    this.loupeCluster.className = 'loupe-cluster';
+    this.loupeCluster.setAttribute('aria-hidden', 'true');
+    this.loupeCluster.hidden = true;
+    this.loupes = new Map();
+    for (const corner of CORNERS) {
+      const element = document.createElement('div');
+      element.className = 'loupe';
+      element.dataset.corner = corner;
+      element.hidden = true;
+      const canvas = document.createElement('canvas');
+      element.append(canvas);
+      this.loupeCluster.append(element);
+      this.loupes.set(corner, { element, canvas });
+    }
+
     this.stage = document.createElement('div');
     this.stage.className = 'edit-stage';
-    this.stage.append(this.canvas, this.overlay);
+    this.stage.append(this.canvas, this.overlay, this.loupeCluster);
     this.stage.addEventListener('pointerdown', (event) => this.onPointerDown(event));
     this.stage.addEventListener('pointermove', (event) => this.onPointerMove(event));
     this.stage.addEventListener('pointerup', (event) => this.onPointerEnd(event));
@@ -169,7 +216,9 @@ export class CropRotateView {
     this.pending = null;
     this.drag = null;
     this.drawnBase = null;
+    this.hideLoupes();
     releaseCanvas(this.canvas);
+    for (const { canvas } of this.loupes.values()) releaseCanvas(canvas);
   }
 
   // ---- buttons ---------------------------------------------------------
@@ -331,6 +380,7 @@ export class CropRotateView {
         return;
       }
     }
+    this.beginLoupes(view);
     this.stage.setPointerCapture(event.pointerId);
     event.preventDefault();
   }
@@ -372,6 +422,7 @@ export class CropRotateView {
       }
     }
     this.renderOverlay();
+    this.renderLoupes();
     event.preventDefault();
   }
 
@@ -379,8 +430,89 @@ export class CropRotateView {
     if (!this.drag || !event.isPrimary) return;
     this.drag = null;
     this.renderArc();
+    this.hideLoupes();
     if (this.stage.hasPointerCapture(event.pointerId)) {
       this.stage.releasePointerCapture(event.pointerId);
     }
+  }
+
+  // ---- loupes (v0.6) ---------------------------------------------------
+
+  /** Decides at drag start which corners to magnify and where the cluster goes. */
+  private beginLoupes(startView: Point): void {
+    const drag = this.drag;
+    if (!drag) return;
+    const kind = drag.kind === 'resize' ? drag.handle : drag.kind;
+    const layout = placeLoupes(loupeCorners(kind), this.stage.clientWidth, this.stage.clientHeight, startView);
+    this.loupeState = layout ? { layout, shown: false } : null;
+  }
+
+  private hideLoupes(): void {
+    this.loupeState = null;
+    this.loupeCluster.hidden = true;
+    for (const { element } of this.loupes.values()) element.hidden = true;
+  }
+
+  /** Shows the cluster on the first move of a drag and redraws every visible loupe. */
+  private renderLoupes(): void {
+    const state = this.loupeState;
+    const capture = this.capture;
+    const pending = this.pending;
+    if (!state || !capture || !pending) return;
+    const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
+    if (!state.shown) {
+      state.shown = true;
+      const radius = LOUPE_DIAMETER / 2;
+      for (const { corner, x, y } of state.layout) {
+        const loupe = this.loupes.get(corner)!;
+        loupe.element.style.left = `${x - radius}px`;
+        loupe.element.style.top = `${y - radius}px`;
+        loupe.element.hidden = false;
+        const size = Math.round(LOUPE_INNER * dpr);
+        if (loupe.canvas.width !== size || loupe.canvas.height !== size) {
+          loupe.canvas.width = size;
+          loupe.canvas.height = size;
+        }
+      }
+      this.loupeCluster.hidden = false;
+    }
+    const base = baseAngle(pending.angle);
+    const scale = loupeScale(affineScale(this.transform), dpr);
+    const corners = frameCorners(pending);
+    const { width, height } = capture.image;
+    for (const { corner } of state.layout) {
+      const centre = corners[CORNERS.indexOf(corner)]!;
+      const ctx = this.loupes.get(corner)!.canvas.getContext('2d');
+      if (!ctx) continue;
+      const t = loupeTransform(centre, base, scale);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.setTransform(t.a * dpr, t.b * dpr, t.c * dpr, t.d * dpr, t.e * dpr, t.f * dpr);
+      const src = loupeSourceRect(centre, scale, width, height);
+      if (src) {
+        ctx.drawImage(capture.image, src.x, src.y, src.width, src.height, src.x, src.y, src.width, src.height);
+      }
+      // Frame lines: the whole frame polygon through the loupe transform, so
+      // an edge that merely passes through the loupe is drawn too.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.beginPath();
+      corners.forEach((p, i) => {
+        const q = applyAffine(t, p);
+        if (i === 0) ctx.moveTo(q.x * dpr, q.y * dpr);
+        else ctx.lineTo(q.x * dpr, q.y * dpr);
+      });
+      ctx.closePath();
+      ctx.strokeStyle = FRAME_STROKE;
+      ctx.lineWidth = FRAME_LINE_WIDTH * dpr;
+      ctx.setLineDash(FRAME_DASH.map((d) => d * dpr));
+      ctx.stroke();
+    }
+  }
+
+  /** Test hook: the CSS-pixel bounds of the visible cluster, or null. */
+  get visibleLoupeBounds(): { x: number; y: number; width: number; height: number } | null {
+    const state = this.loupeState;
+    if (!state || !state.shown) return null;
+    return clusterBounds(state.layout);
   }
 }
