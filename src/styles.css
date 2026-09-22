@@ -172,6 +172,11 @@ button {
   height: 64px;
 }
 
+/* .icon-button sets display, which would otherwise override the hidden attribute. */
+.update-button[hidden] {
+  display: none;
+}
+
 .app-version {
   position: absolute;
   bottom: calc(var(--safe-bottom) + 12px);

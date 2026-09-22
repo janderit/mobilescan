@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App, CAMERA_ERROR_LABELS } from '../src/app';
 import type { CameraSession } from '../src/camera';
@@ -173,6 +174,11 @@ describe('App updates', () => {
     await flush();
     expect(updates.apply).toHaveBeenCalledOnce();
     expect(root.querySelector<HTMLElement>('.busy')?.hidden).toBe(false);
+  });
+
+  it('hides the update button with a stylesheet rule, not only the attribute', () => {
+    const css = readFileSync('src/styles.css', 'utf8');
+    expect(css).toMatch(/\.update-button\[hidden\]\s*\{\s*display:\s*none;/);
   });
 
   it('keeps the button hidden without an update and without a checker', async () => {
