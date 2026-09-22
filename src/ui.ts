@@ -9,6 +9,18 @@ export function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Recor
   return node;
 }
 
+/** An HTML element with a class and children. */
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className: string,
+  ...children: (Node | string)[]
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  node.className = className;
+  node.append(...children);
+  return node;
+}
+
 export function iconButton(icon: string, label: string, className = ''): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';

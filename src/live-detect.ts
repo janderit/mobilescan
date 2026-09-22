@@ -5,8 +5,7 @@
  * and glue; the maths lives in detect.ts, the rendering in canvas.ts.
  */
 
-import { sampleImage } from './canvas';
-import { AGREE_FRACTION, DetectionTracker, detectFrameStrict, frameWorkingLayout, type TrackerState } from './detect';
+import { AGREE_FRACTION, DetectionTracker, detectFrameIn, detectFrameStrict, type TrackerState } from './detect';
 import { quadCorners } from './geometry';
 import type { Frame } from './model';
 
@@ -109,9 +108,7 @@ export class LiveDetector {
     if (!this.tracker || !this.frame) return this.state;
     let corners = null;
     try {
-      const layout = frameWorkingLayout(this.frame);
-      const working = sampleImage(this.video, layout.transform, layout.width, layout.height);
-      const detected = this.detect(working, layout, this.frame, this.imageWidth);
+      const detected = detectFrameIn(this.video, this.frame, this.imageWidth, this.detect);
       corners = detected ? quadCorners(detected) : null;
     } catch (error) {
       // A run that fails (canvas memory, detached stream) is a miss; the loop goes on.

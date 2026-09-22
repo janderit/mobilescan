@@ -15,6 +15,20 @@ export function createCanvas(
   return { canvas, ctx };
 }
 
+/** Encodes a canvas as a JPEG blob at the given quality. */
+export function encodeJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('JPEG encoding failed'));
+      },
+      'image/jpeg',
+      quality,
+    );
+  });
+}
+
 /** Releases the pixel buffer of a canvas. */
 export function releaseCanvas(canvas: HTMLCanvasElement): void {
   canvas.width = 0;

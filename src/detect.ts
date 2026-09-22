@@ -42,7 +42,8 @@ import {
   type Quad,
   type Rect,
 } from './geometry';
-import { clampTone, type Tone } from './tone';
+import { clampTone, LUMA, type Tone } from './tone';
+import { sampleImage } from './canvas';
 
 /** Longer frame side of the working image for edge detection, in pixels. */
 export const DETECT_LONG_SIDE = 800;
@@ -79,9 +80,6 @@ const TEXT_PERCENTILE = 0.01;
 const MIN_INK_CONTRAST = 0.2;
 /** ... and the print is assumed this far below the background. */
 const ASSUMED_INK_DISTANCE = 0.5;
-
-/** sRGB luminance coefficients, the same as the grayscale filter uses. */
-const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 };
 
 // ---- working copies ---------------------------------------------------------
 
@@ -460,6 +458,23 @@ export function detectFrameStrict(
   const result = detectFrameDetailed(working, layout, current, imageWidth);
   if (result.found < 4 || result.clamped) return null;
   return result.frame;
+}
+
+/**
+ * The whole pipeline on an image: renders the working copy of `frame`
+ * (offsets ignored by the layout) from `image` and runs `rule` on it. The
+ * wand's `detectFrame` by default; the live detection and the still after
+ * the shutter pass `detectFrameStrict`.
+ */
+export function detectFrameIn(
+  image: CanvasImageSource,
+  frame: Frame,
+  imageWidth: number,
+  rule: typeof detectFrameStrict = detectFrame,
+): Frame | null {
+  const layout = frameWorkingLayout(frame);
+  const working = sampleImage(image, layout.transform, layout.width, layout.height);
+  return rule(working, layout, frame, imageWidth);
 }
 
 // ---- live detection tracker (v0.10) --------------------------------------

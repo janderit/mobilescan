@@ -31,6 +31,7 @@ export class FrameStage {
 
   private capture: Capture | null = null;
   private drawn: { width: number; height: number; capture: Capture; zoom: ZoomState } | null = null;
+  private observer: ResizeObserver | null = null;
 
   constructor(
     canvasClass: string,
@@ -70,7 +71,8 @@ export class FrameStage {
     this.element.addEventListener('pointercancel', end);
 
     if (typeof ResizeObserver === 'function') {
-      new ResizeObserver(() => this.layout()).observe(this.element);
+      this.observer = new ResizeObserver(() => this.layout());
+      this.observer.observe(this.element);
     }
   }
 
@@ -88,6 +90,12 @@ export class FrameStage {
     this.drawn = null;
     this.gesture.reset();
     releaseCanvas(this.canvas);
+  }
+
+  /** Releases the stage for good: stops observing its size. */
+  dispose(): void {
+    this.observer?.disconnect();
+    this.observer = null;
   }
 
   /** Back to the fitted view without changing the capture. */

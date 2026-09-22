@@ -54,12 +54,6 @@ export interface Page {
   dirty: boolean;
 }
 
-/** The scan in progress: pages in capture order and the one on screen. */
-export interface Document {
-  pages: Page[];
-  current: number;
-}
-
 /** Soft limit: [+] is disabled at this many pages (decision 2026-09-22). */
 export const MAX_PAGES = 20;
 

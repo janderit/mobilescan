@@ -4,6 +4,7 @@
  */
 
 import { captureSize } from './geometry';
+import { createCanvas } from './canvas';
 
 export interface CameraSession {
   stream: MediaStream;
@@ -97,13 +98,7 @@ export function stopCamera(session: CameraSession): void {
  */
 export function captureStill(session: CameraSession): HTMLCanvasElement {
   const size = captureSize(session.width, session.height);
-  const canvas = document.createElement('canvas');
-  canvas.width = size.width;
-  canvas.height = size.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('2d context unavailable');
-  }
+  const { canvas, ctx } = createCanvas(size.width, size.height);
   ctx.drawImage(session.video, 0, 0, size.width, size.height);
   return canvas;
 }

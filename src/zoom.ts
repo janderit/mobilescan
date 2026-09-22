@@ -46,11 +46,6 @@ export function maxZoomScale(fittedScale: number, devicePixelRatio: number): num
   return Math.max(1, Math.min(MAX_ZOOM, cap));
 }
 
-/** The zoom as an affine transform of stage CSS pixels. */
-export function zoomAffine(z: ZoomState): Affine {
-  return { a: z.scale, b: 0, c: 0, d: z.scale, e: z.tx, f: z.ty };
-}
-
 export function applyZoom(z: ZoomState, p: Point): Point {
   return { x: z.scale * p.x + z.tx, y: z.scale * p.y + z.ty };
 }

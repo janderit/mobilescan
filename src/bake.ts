@@ -6,7 +6,7 @@
 
 import type { Capture, Frame } from './model';
 import { bakeLayout, hasCornerOffsets, warpLayout, withoutCorners } from './geometry';
-import { releaseCanvas } from './canvas';
+import { createCanvas, releaseCanvas } from './canvas';
 import { warpImage } from './warp';
 import {
   applyTonePixels,
@@ -29,13 +29,7 @@ export function bakeRotation(capture: Capture, frame: Frame): Capture {
   }
   const { image } = capture;
   const layout = bakeLayout(image.width, image.height, frame);
-  const canvas = document.createElement('canvas');
-  canvas.width = layout.width;
-  canvas.height = layout.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('2d context unavailable');
-  }
+  const { canvas, ctx } = createCanvas(layout.width, layout.height);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const t = layout.transform;
@@ -93,13 +87,7 @@ export function bakeTone(capture: Capture, tone: Tone): Capture {
     return capture;
   }
   const { image, frame } = capture;
-  const canvas = document.createElement('canvas');
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('2d context unavailable');
-  }
+  const { canvas, ctx } = createCanvas(image.width, image.height);
   if (toneUsesShorthandOnly(tone) && contextSupportsFilter()) {
     ctx.filter = toneFilter(tone);
     ctx.drawImage(image, 0, 0);

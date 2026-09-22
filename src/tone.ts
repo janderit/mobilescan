@@ -46,7 +46,7 @@ export const TONE_RANGES: Record<ToneKey, ToneRange> = {
 export const TEMPERATURE_GAIN = 0.2;
 
 /** sRGB luminance coefficients used by the CSS grayscale() filter. */
-const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 };
+export const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 };
 
 export const NEUTRAL_TONE: Readonly<Tone> = Object.freeze({
   brightness: 1,

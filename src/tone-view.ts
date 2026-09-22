@@ -37,7 +37,7 @@ import {
   type Tone,
   type ToneKey,
 } from './tone';
-import { iconButton, segmentButton } from './ui';
+import { iconButton, segmentButton, svgEl } from './ui';
 import type { ZoomState } from './zoom';
 
 export interface ToneViewCallbacks {
@@ -64,7 +64,6 @@ const KEY_LABELS: Record<ToneKey, string> = {
 const TEMPERATURE_FILTER_ID = 'tone-temperature';
 /** Resolution of the native range input (linear; the value mapping is piecewise). */
 const SLIDER_STEPS = 1000;
-const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export class ToneView {
   readonly element: HTMLElement;
@@ -87,15 +86,9 @@ export class ToneView {
     this.canvas = this.stage.canvas;
 
     // Hidden SVG holding the temperature colour matrix for the preview filter.
-    const defs = document.createElementNS(SVG_NS, 'svg');
-    defs.setAttribute('class', 'tone-defs');
-    defs.setAttribute('aria-hidden', 'true');
-    const filter = document.createElementNS(SVG_NS, 'filter');
-    filter.setAttribute('id', TEMPERATURE_FILTER_ID);
-    filter.setAttribute('color-interpolation-filters', 'sRGB');
-    this.temperatureMatrixEl = document.createElementNS(SVG_NS, 'feColorMatrix');
-    this.temperatureMatrixEl.setAttribute('type', 'matrix');
-    this.temperatureMatrixEl.setAttribute('values', temperatureMatrix(0));
+    const defs = svgEl('svg', { class: 'tone-defs', 'aria-hidden': 'true' });
+    const filter = svgEl('filter', { id: TEMPERATURE_FILTER_ID, 'color-interpolation-filters': 'sRGB' });
+    this.temperatureMatrixEl = svgEl('feColorMatrix', { type: 'matrix', values: temperatureMatrix(0) });
     filter.append(this.temperatureMatrixEl);
     defs.append(filter);
 
@@ -193,7 +186,8 @@ export class ToneView {
     try {
       const layout = toneWorkingLayout(capture.frame);
       tone = detectTone(sampleImage(capture.image, layout.transform, layout.width, layout.height));
-    } catch {
+    } catch (error) {
+      console.error('Automatische Anpassung fehlgeschlagen', error);
       tone = null;
     }
     if (!tone) {

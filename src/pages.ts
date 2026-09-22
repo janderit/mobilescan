@@ -5,7 +5,7 @@
  */
 
 import type { Capture, Page } from './model';
-import { createCanvas, releaseCanvas } from './canvas';
+import { createCanvas, encodeJpegBlob, releaseCanvas } from './canvas';
 
 /** JPEG quality of a parked page (decision 2026-09-22). */
 export const PARK_QUALITY = 0.95;
@@ -42,19 +42,6 @@ export function applyCapture(page: Page, capture: Capture): void {
   page.width = capture.image.width;
   page.height = capture.image.height;
   page.frame = capture.frame;
-}
-
-function encodeJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error('JPEG encoding failed'));
-      },
-      'image/jpeg',
-      quality,
-    );
-  });
 }
 
 /**

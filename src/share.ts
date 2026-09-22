@@ -7,30 +7,15 @@ import type { Capture, CompressionLevel, Page } from './model';
 import { frameSourceRect } from './geometry';
 import { jpegQuality } from './quality';
 import { buildPdf, pdfFileName, type PdfImage } from './pdf';
-import { createCanvas, releaseCanvas } from './canvas';
+import { createCanvas, encodeJpegBlob, releaseCanvas } from './canvas';
 import { decodePage } from './pages';
-
-export { releaseCanvas } from './canvas';
 
 export type ShareOutcome = 'shared' | 'aborted';
 
-/**
- * Renders the frame region of a capture into a new canvas.
- * `maxLongSide` optionally downscales (used for the on-screen preview only).
- */
-export function renderFrame(capture: Capture, maxLongSide?: number): HTMLCanvasElement {
+/** Renders the frame region of a capture into a new canvas at full resolution. */
+export function renderFrame(capture: Capture): HTMLCanvasElement {
   const src = frameSourceRect(capture.frame);
-  let width = Math.round(src.width);
-  let height = Math.round(src.height);
-  if (maxLongSide !== undefined) {
-    const longSide = Math.max(width, height);
-    if (longSide > maxLongSide) {
-      const scale = maxLongSide / longSide;
-      width = Math.round(width * scale);
-      height = Math.round(height * scale);
-    }
-  }
-  const { canvas, ctx } = createCanvas(width, height);
+  const { canvas, ctx } = createCanvas(Math.round(src.width), Math.round(src.height));
   ctx.drawImage(
     capture.image,
     src.x,
@@ -45,23 +30,9 @@ export function renderFrame(capture: Capture, maxLongSide?: number): HTMLCanvasE
   return canvas;
 }
 
-function encodeJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) {
-          reject(new Error('JPEG encoding failed'));
-          return;
-        }
-        blob
-          .arrayBuffer()
-          .then((buffer) => resolve(new Uint8Array(buffer)))
-          .catch((error: unknown) => reject(error instanceof Error ? error : new Error(String(error))));
-      },
-      'image/jpeg',
-      quality,
-    );
-  });
+async function encodeJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
+  const blob = await encodeJpegBlob(canvas, quality);
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 /** Renders and encodes the frame region of one page. */
