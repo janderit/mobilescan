@@ -54,7 +54,8 @@ the bilingual (DE/EN) product page with Impressum and Datenschutzhinweis, deploy
 the state machine and the transitions (`main.ts` only mounts it, so jsdom tests can drive it), with
 the screens in `start-view.ts`, `error-view.ts` (camera errors), `camera-view.ts` (video, overlay,
 live detector, detect toggle), `captured-view.ts` (page header, stage, button bar, popover, share
-sheet), `editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `update-prompt.ts` drives the
+sheet), `editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `frame-overlay.ts` is the SVG
+shade-with-hole (and outline) the camera and crop/rotate views draw over their stages; `update-prompt.ts` drives the
 start page's update button over `update.ts`; `scan.ts` owns the page list over `pages.ts`.
 `detect.ts` is the canvas glue (`DetectScratch`, `detectFrameIn`) and a barrel over
 `detect-edges.ts`, `detect-frame.ts`, `detect-tracker.ts` and `detect-tone.ts`. Every module starts

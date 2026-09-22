@@ -9,11 +9,12 @@
 
 import * as icons from './icons';
 import type { Frame, Point, UprightFrame } from './model';
-import { iconButton, el, prefersReducedMotion, svgEl } from './ui';
+import { iconButton, el, prefersReducedMotion } from './ui';
 import { applyAffine, coverTransform, frameCorners, initialFrame, visibleImageRect, type Affine } from './geometry';
 import { stopCamera, type CameraSession } from './camera';
 import type { TrackerState } from './detect';
 import { LiveDetector } from './live-detect';
+import { FrameOverlay } from './frame-overlay';
 
 /** Vibration when the live outline turns green (the shutter uses 30 ms). */
 const FOUND_VIBRATION_MS = 15;
@@ -44,9 +45,7 @@ export class CameraView {
   /** The video element the camera stream is attached to (`startCamera`). */
   readonly video: HTMLVideoElement;
 
-  private readonly frameOverlay: SVGSVGElement;
-  private readonly frameShade: SVGPathElement;
-  private readonly framePolygon: SVGPolygonElement;
+  private readonly frameOverlay: FrameOverlay;
   private readonly detectButton: HTMLButtonElement;
   private readonly liveDetector: LiveDetector;
   private liveState: TrackerState = { found: false, corners: null };
@@ -70,18 +69,19 @@ export class CameraView {
     this.video.playsInline = true;
     this.video.muted = true;
     this.video.setAttribute('playsinline', '');
-    this.frameOverlay = svgEl('svg', { class: 'camera-frame', 'aria-hidden': 'true' });
-    this.frameShade = svgEl('path', { class: 'camera-shade', 'fill-rule': 'evenodd' });
-    this.framePolygon = svgEl('polygon', { class: 'camera-outline' });
-    this.frameOverlay.append(this.frameShade, this.framePolygon);
-    this.frameOverlay.setAttribute('hidden', '');
+    this.frameOverlay = new FrameOverlay({
+      svgClass: 'camera-frame',
+      shadeClass: 'camera-shade',
+      outlineClass: 'camera-outline',
+    });
+    this.frameOverlay.visible = false;
     const back = iconButton(icons.arrowLeft, 'Zurück', 'dark camera-back');
     back.addEventListener('click', () => callbacks.onBack());
     const shutter = iconButton(icons.shutter, 'Foto aufnehmen', 'camera-shutter');
     shutter.addEventListener('click', () => callbacks.onShutter());
     this.detectButton = iconButton(icons.magicWand, 'Dokument automatisch erkennen', 'dark camera-detect');
     this.detectButton.addEventListener('click', () => this.toggleLiveDetect());
-    this.element = el('section', 'screen screen-camera', this.video, this.frameOverlay, back, shutter, this.detectButton);
+    this.element = el('section', 'screen screen-camera', this.video, this.frameOverlay.element, back, shutter, this.detectButton);
     this.liveDetector = new LiveDetector(this.video, { onResult: (state) => this.onLiveResult(state) });
 
     const { signal } = this.listeners;
@@ -136,7 +136,7 @@ export class CameraView {
   layout(): void {
     const session = this.currentSession;
     if (!session) {
-      this.frameOverlay.setAttribute('hidden', '');
+      this.frameOverlay.visible = false;
       return;
     }
     const viewW = this.element.clientWidth;
@@ -149,8 +149,8 @@ export class CameraView {
     const changed = !this.frame || !sameFrame(this.frame, frame);
     this.frame = frame;
     this.cover = coverTransform(session.width, session.height, viewW, viewH);
-    this.frameOverlay.setAttribute('viewBox', `0 0 ${viewW} ${viewH}`);
-    this.frameOverlay.removeAttribute('hidden');
+    this.frameOverlay.setViewBox(viewW, viewH);
+    this.frameOverlay.visible = true;
     this.syncLiveDetector(changed);
     this.renderCameraFrame();
   }
@@ -165,7 +165,7 @@ export class CameraView {
     }
     this.frame = null;
     this.cover = null;
-    this.frameOverlay.setAttribute('hidden', '');
+    this.frameOverlay.visible = false;
   }
 
   /** Releases the view for good: closes it and detaches the listeners. */
@@ -184,14 +184,8 @@ export class CameraView {
     const corners = this.detectEnabled && this.liveState.found ? this.liveState.corners : null;
     const found = corners !== null;
     const points: Point[] = (corners ?? frameCorners(frame)).map((p) => applyAffine(cover, p));
-    const viewW = this.element.clientWidth;
-    const viewH = this.element.clientHeight;
-    const inner = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-    this.framePolygon.setAttribute('points', inner);
-    const outer = `M0 0H${viewW}V${viewH}H0Z`;
-    const hole = `M${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('L')}Z`;
-    this.frameShade.setAttribute('d', outer + hole);
-    this.frameOverlay.classList.toggle('found', found);
+    this.frameOverlay.render(points);
+    this.frameOverlay.element.classList.toggle('found', found);
   }
 
   /** Starts, restarts or stops the live detection to match the session, the toggle and the frame. */

@@ -9,6 +9,12 @@ export function svgEl<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Recor
   return node;
 }
 
+/** A pointer event's position in CSS pixels relative to `element`'s top-left corner. */
+export function pointIn(element: Element, event: PointerEvent): { x: number; y: number } {
+  const rect = element.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
 /** An HTML element with a class and children. */
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,

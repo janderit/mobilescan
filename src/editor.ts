@@ -59,6 +59,7 @@ import { LoupeCluster } from './loupe-cluster';
 import { iconButton, segmentButton, svgEl } from './ui';
 import type { ZoomState } from './zoom';
 import { ZoomStage } from './zoom-stage';
+import { FrameOverlay } from './frame-overlay';
 
 export type EditMode = 'crop' | 'rotate';
 
@@ -90,8 +91,8 @@ export class CropRotateView {
   readonly element: HTMLElement;
 
   private readonly stage: ZoomStage;
-  private readonly overlay: SVGSVGElement;
-  private readonly shade: SVGPathElement;
+  /** The shade; the outline is drawn by `framePolygon` inside the frame group, with the handles. */
+  private readonly overlay: FrameOverlay;
   private readonly frameGroup: SVGGElement;
   private readonly framePolygon: SVGPolygonElement;
   private readonly handles: Map<Handle, SVGCircleElement>;
@@ -105,9 +106,7 @@ export class CropRotateView {
   private drag: Drag | null = null;
 
   constructor(private readonly callbacks: EditorCallbacks) {
-    this.overlay = svgEl('svg', { class: 'edit-overlay' });
-    this.overlay.setAttribute('aria-hidden', 'true');
-    this.shade = svgEl('path', { class: 'edit-shade', 'fill-rule': 'evenodd' });
+    this.overlay = new FrameOverlay({ svgClass: 'edit-overlay', shadeClass: 'edit-shade' });
     this.frameGroup = svgEl('g');
     this.framePolygon = svgEl('polygon', { class: 'edit-frame' });
     this.frameGroup.append(this.framePolygon);
@@ -119,7 +118,7 @@ export class CropRotateView {
     }
     this.arc = svgEl('path', { class: 'edit-arc' });
     this.arc.setAttribute('visibility', 'hidden');
-    this.overlay.append(this.shade, this.frameGroup, this.arc);
+    this.overlay.append(this.frameGroup, this.arc);
 
     this.loupes = new LoupeCluster();
 
@@ -138,7 +137,7 @@ export class CropRotateView {
       onPointerMove: (event) => this.onPointerMove(event),
       onPointerEnd: (event) => this.onPointerEnd(event),
     });
-    this.stage.element.append(this.overlay, this.loupes.element);
+    this.stage.element.append(this.overlay.element, this.loupes.element);
 
     const back = iconButton(icons.arrowLeft, 'Zurück', 'compact');
     back.addEventListener('click', () => this.cancel());
@@ -310,7 +309,7 @@ export class CropRotateView {
   /** The stage laid out: the overlay follows the stage size and the composed transform. */
   private onLayout(): void {
     const { clientWidth, clientHeight } = this.stage.element;
-    this.overlay.setAttribute('viewBox', `0 0 ${clientWidth} ${clientHeight}`);
+    this.overlay.setViewBox(clientWidth, clientHeight);
     this.renderOverlay();
   }
 
@@ -351,11 +350,7 @@ export class CropRotateView {
       circle.setAttribute('visibility', visibleHandles.includes(handle) ? 'visible' : 'hidden');
     }
     // Dim everything outside the frame.
-    const viewBox = this.overlay.viewBox.baseVal;
-    const corners = quadCorners(pending).map((p) => applyAffine(t, p));
-    const outer = `M0 0H${viewBox.width}V${viewBox.height}H0Z`;
-    const inner = corners.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join('') + 'Z';
-    this.shade.setAttribute('d', outer + inner);
+    this.overlay.render(quadCorners(pending).map((p) => applyAffine(t, p)));
   }
 
   private renderArc(): void {
@@ -381,11 +376,6 @@ export class CropRotateView {
 
   // ---- pointer input ---------------------------------------------------
 
-  private viewPoint(event: PointerEvent): Point {
-    const rect = this.stage.element.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  }
-
   /** The handle whose 44 px touch target contains the stage point, in the composed view. */
   private handleAt(view: Point): Handle | null {
     const pending = this.pending;
@@ -399,7 +389,7 @@ export class CropRotateView {
     const capture = this.capture;
     const pending = this.pending;
     if (!capture || !pending || this.drag || !event.isPrimary) return;
-    const view = this.viewPoint(event);
+    const view = this.stage.stagePoint(event);
     const image = applyAffine(invertAffine(this.transform), view);
     if (this.mode === 'rotate') {
       const centreView = applyAffine(this.transform, { x: pending.cx, y: pending.cy });
@@ -432,7 +422,7 @@ export class CropRotateView {
     const capture = this.capture;
     const pending = this.pending;
     if (!drag || !capture || !pending || !event.isPrimary) return;
-    const view = this.viewPoint(event);
+    const view = this.stage.stagePoint(event);
     const { width, height } = capture.image;
     if (drag.kind === 'rotate') {
       const touch = Math.atan2(view.y - drag.centreView.y, view.x - drag.centreView.x);

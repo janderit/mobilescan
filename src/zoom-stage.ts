@@ -18,6 +18,7 @@
 import { affineScale, type Affine, type Point, type Rect } from './geometry';
 import { displayDpr, drawImageThrough, releaseCanvas, sizeDisplayCanvas } from './canvas';
 import { ZoomGesture } from './zoom-gesture';
+import { pointIn } from './ui';
 import { composeZoom, maxZoomScale, sameZoom, type ZoomState } from './zoom';
 
 const IDENTITY_AFFINE: Readonly<Affine> = Object.freeze({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 });
@@ -124,6 +125,11 @@ export class ZoomStage {
   /** The zoom state. */
   get zoom(): ZoomState {
     return this.gesture.state;
+  }
+
+  /** A pointer event's position in CSS pixels of the stage. */
+  stagePoint(event: PointerEvent): Point {
+    return pointIn(this.element, event);
   }
 
   /** Shows an image in the fitted view (the zoom resets) and draws it if the stage has a size. */

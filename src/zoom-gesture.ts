@@ -12,6 +12,7 @@
  */
 
 import type { Point, Rect } from './geometry';
+import { pointIn } from './ui';
 import {
   DOUBLE_TAP_MS,
   DOUBLE_TAP_RADIUS,
@@ -126,9 +127,8 @@ export class ZoomGesture {
     return this.options.bounds()?.maxScale ?? 1;
   }
 
-  private stagePoint(event: PointerEvent): { x: number; y: number } {
-    const rect = this.options.stage.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  private stagePoint(event: PointerEvent): Point {
+    return pointIn(this.options.stage, event);
   }
 
   private capture(id: number): void {
