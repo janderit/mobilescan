@@ -39,3 +39,20 @@ decisions taken with Philip in the planning session.
 - Captured resolution: highest the video track offers, capped to stay under iOS canvas limits (about 16 MP).
 - Icons: inline SVG, no icon font or CDN. Exception added after v0.1 device testing: the three compression icons in the share sheet carry short captions (Klein / Mittel / Groß) because the file icons alone were not intuitive.
 - PDF built with a small client library (pdf-lib or jsPDF); JPEG quality per level roughly 0.5 / 0.75 / 0.92.
+
+## v0.4 decisions (2026-09-22, at the start of v0.4)
+
+Taken after comparing `v0.4-ui-polish.md` against the v0.3 code.
+
+| Topic | Decision |
+|---|---|
+| Hardware back / swipe back | Every screen change pushes a history entry; `popstate` acts as the current screen's back button. Without this, back in the installed app exits to the launcher and drops the scan. |
+| Non-camera errors (share, bake) | Shown as a brief icon-only warning over the current view, image and view untouched. Camera errors keep their own screen per the mockup. |
+| Busy overlay for baking | Baking is deferred two animation frames after the overlay renders, so the spinner is actually painted before the synchronous pixel work. |
+| Retake | Goes straight from captured view to camera, no detour via the start page (would flicker with cross-fades). |
+| Shutter feedback | White flash plus `navigator.vibrate` where available; both off under reduced motion. |
+| Lighthouse PWA criterion | Lighthouse no longer has a PWA category (removed in v12). Installability is checked in the Chrome DevTools Application panel; Lighthouse supplies accessibility and performance scores only. |
+| iOS splash | Out. The manifest background colour covers Android; iOS would need one startup image per device size. |
+| iOS "add to home screen" hint | Stays out (confirms the v1 decision above). The app is fully usable in a Safari tab and the hint would be the only text-heavy screen. |
+| `beforeunload` prompt | None. Unreliable in standalone mode; the history integration covers accidental back. Only defensive clearing of image references. |
+| Tests | jsdom tests for the state machine: camera error path, share fallback, history handling. |

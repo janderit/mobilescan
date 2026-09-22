@@ -37,6 +37,9 @@ function waitForMetadata(video: HTMLVideoElement): Promise<void> {
  * Rejects when the camera is unavailable or permission is denied.
  */
 export async function startCamera(video: HTMLVideoElement): Promise<CameraSession> {
+  if (!window.isSecureContext || typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+    throw new DOMException('Camera needs a secure context', 'SecurityError');
+  }
   const stream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS);
   video.srcObject = stream;
   try {
@@ -58,6 +61,26 @@ export async function startCamera(video: HTMLVideoElement): Promise<CameraSessio
     height = video.videoHeight;
   }
   return { stream, video, width, height };
+}
+
+/** Why the camera could not be started; the error screen labels itself with it. */
+export type CameraErrorKind = 'denied' | 'unavailable' | 'insecure';
+
+export function cameraErrorKind(error: unknown): CameraErrorKind {
+  // Duck-typed: DOMException may come from another realm than Error.
+  const name =
+    typeof error === 'object' && error !== null && 'name' in error && typeof error.name === 'string'
+      ? error.name
+      : '';
+  switch (name) {
+    case 'SecurityError':
+      return 'insecure';
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'denied';
+    default:
+      return 'unavailable';
+  }
 }
 
 /** Stops all tracks and detaches the stream from the video element. */

@@ -11,6 +11,8 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+  /* Cross-fade duration; must match FADE_MS in app.ts. */
+  --fade: 150ms;
 }
 
 * {
@@ -56,6 +58,34 @@ body {
 
 .screen[hidden] {
   display: none;
+}
+
+/* Cross-fade: the entering screen fades in on top of the leaving one. */
+.screen.entering {
+  z-index: 1;
+  animation: fade-in var(--fade) ease-out;
+}
+
+.screen.leaving {
+  z-index: 0;
+  pointer-events: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Focus rings for keyboard and switch access; touch does not show them. */
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.screen-camera :focus-visible,
+.screen-error :focus-visible {
+  outline-color: var(--frame);
 }
 
 /* Buttons */
@@ -193,6 +223,59 @@ button {
   height: 48px;
 }
 
+/* Shutter flash */
+
+.flash {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.flash.active {
+  animation: flash 200ms ease-out;
+}
+
+@keyframes flash {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Camera error: warning, retry, back. */
+
+.screen-error {
+  align-items: center;
+  justify-content: center;
+  gap: 64px;
+  background: var(--camera-bg);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.error-icon {
+  color: var(--frame);
+}
+
+.error-icon svg {
+  width: 72px;
+  height: 72px;
+}
+
+.screen-error .icon-button.primary {
+  width: 72px;
+  height: 72px;
+}
+
+.screen-error .icon-button.primary svg {
+  width: 32px;
+  height: 32px;
+}
+
 /* Captured */
 
 .screen-captured {
@@ -236,6 +319,8 @@ button {
 
 .popover {
   position: absolute;
+  transform-origin: calc(100% - 48px) 100%;
+  animation: pop-in var(--fade) ease-out;
   right: calc(20px + var(--safe-right));
   bottom: calc(112px + var(--safe-bottom));
   display: flex;
@@ -258,6 +343,13 @@ button {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   transform: rotate(45deg);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
 }
 
 .icon-button.compact {
@@ -414,6 +506,7 @@ button {
 .busy {
   position: absolute;
   inset: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -437,9 +530,45 @@ button {
   }
 }
 
+/* Error notice: warning icon shown briefly over the current view. */
+
+.notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 24px;
+  background: rgba(17, 24, 39, 0.85);
+  color: var(--frame);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: fade-in var(--fade) ease-out;
+}
+
+.notice[hidden] {
+  display: none;
+}
+
+.notice svg {
+  width: 56px;
+  height: 56px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .busy svg {
     animation: spin 1.5s steps(8) infinite;
+  }
+
+  .screen.entering,
+  .popover,
+  .notice,
+  .flash.active {
+    animation: none;
   }
 }
 
@@ -502,6 +631,12 @@ button {
 
 .tone-slider:focus {
   outline: none;
+}
+
+.tone-slider:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+  border-radius: 3px;
 }
 
 .tone-slider::-webkit-slider-runnable-track {

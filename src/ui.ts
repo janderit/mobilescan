@@ -21,3 +21,25 @@ export function segmentButton(icon: string, label: string, onSelect: () => void)
   button.addEventListener('click', onSelect);
   return button;
 }
+
+/**
+ * Resolves after the browser has painted the current DOM state: two animation
+ * frames, so an overlay shown just before is on screen before heavy
+ * synchronous work starts.
+ */
+export function afterPaint(): Promise<void> {
+  if (typeof requestAnimationFrame !== 'function') {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+/** True when the user asked the OS for less motion. */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return false;
+  }
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
