@@ -1,8 +1,10 @@
 /**
  * Live document detection on the camera view: runs the paper edge search
  * on the video element a few times per second, from the static camera
- * frame, feeds a `DetectionTracker` and reports its state. Pure scheduling
- * and glue; the maths lives in detect.ts, the rendering in canvas.ts.
+ * frame, feeds a `DetectionTracker` and reports its state; `detectStill`
+ * is the capture rule that runs once more on the still after the shutter.
+ * Pure scheduling and glue; the maths lives in detect.ts, the rendering in
+ * canvas.ts.
  */
 
 import {
@@ -129,5 +131,19 @@ export class LiveDetector {
       console.error('Live-Erkennung fehlgeschlagen', error);
     }
     return this.tracker.push(corners);
+  }
+}
+
+/**
+ * The strict detection on a captured still, from the static frame. Null when
+ * no document is found or the detection fails (logged); the capture then
+ * keeps the static frame. Runs synchronously (about 0.5 MP of work).
+ */
+export function detectStill(image: HTMLCanvasElement, frame: Frame): Frame | null {
+  try {
+    return detectFrameIn(image, frame, image.width, detectFrameStrict);
+  } catch (error) {
+    console.error('Erkennung fehlgeschlagen', error);
+    return null;
   }
 }

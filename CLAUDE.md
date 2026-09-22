@@ -51,14 +51,17 @@ Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
 the bilingual (DE/EN) product page with Impressum and Datenschutzhinweis, deployed to the site root
 (template in the repo, rendered file git-ignored). Inside `src/`: `geometry.ts` is a barrel over
 `angles.ts`, `affine.ts`, `homography.ts`, `frame.ts` and `layout.ts`; the app shell `app.ts` holds
-the state machine and the transitions (`main.ts` only mounts it, so jsdom tests can drive it), with
-the screens in `start-view.ts`, `error-view.ts` (camera errors), `camera-view.ts` (video, overlay,
+the state machine and the transitions (`main.ts` only mounts it, so jsdom tests can drive it) over
+three helpers: `screen-switcher.ts` (the cross-fade), `overlays.ts` (busy spinner, error notice and
+`run`, the one place work goes behind the spinner) and `page-flow.ts` (park, wake and bake pages
+over `scan.ts`); the screens are in `start-view.ts`, `error-view.ts` (camera errors), `camera-view.ts` (video, overlay,
 live detector, detect toggle), `captured-view.ts` (page header, stage, button bar, popover, share
 sheet), `editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `frame-overlay.ts` is the SVG
 shade-with-hole (and outline) the camera and crop/rotate views draw over their stages; `update-prompt.ts` drives the
 start page's update button over `update.ts`; `scan.ts` owns the page list over `pages.ts`.
 `detect.ts` is the canvas glue (`DetectScratch`, `detectFrameIn`) and a barrel over
-`detect-edges.ts`, `detect-frame.ts`, `detect-tracker.ts` and `detect-tone.ts`; `color.ts` holds the
+`detect-edges.ts`, `detect-frame.ts`, `detect-tracker.ts` and `detect-tone.ts`, and `live-detect.ts`
+runs it on the video and on the still after the shutter (`detectStill`); `color.ts` holds the
 luminance coefficients the tone chain and the detection share, and `canvas.ts` the display caps
 (`MAX_DPR`, `MAX_DEVICE_PIXELS_PER_IMAGE_PIXEL`) the zoom and the loupes obey. Every module starts
 with a header comment that states its job and its purity (DOM or not); read it before editing.

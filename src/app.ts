@@ -3,34 +3,39 @@
  * (share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
  * One in-memory state machine, plain DOM, no persistence. A scan is a list of
  * pages of which only the current one holds a full-resolution canvas.
- * The captured screen (`CapturedView`) shows the current page on a zoomable
- * `FrameStage`; the zoom is view state only and resets whenever the view is
- * entered.
+ *
+ * The shell wires the screens to three helpers: `ScreenSwitcher` cross-fades
+ * between them, `Overlays` owns the busy spinner and the error notice and
+ * runs work behind them, and `PageFlow` parks, wakes and bakes pages over
+ * the `Scan`. The captured screen (`CapturedView`) shows the current page on
+ * a zoomable `FrameStage`; the zoom is view state only and resets whenever
+ * the view is entered.
  */
 
-import * as icons from './icons';
 import type { CompressionLevel, Frame, Page } from './model';
-import { afterPaint, el, prefersReducedMotion } from './ui';
-import { hasCornerOffsets, initialFrame, scaleFrame } from './geometry';
+import { el, prefersReducedMotion } from './ui';
+import { initialFrame, scaleFrame } from './geometry';
 import { DEFAULT_COMPRESSION } from './quality';
 import { cameraErrorKind, captureStill, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
 import { buildPdfFile, sharePdf } from './share';
 import type { UpdateChecker } from './update';
 import { UpdatePrompt } from './update-prompt';
-import { applyCapture, asCapture, newPage } from './pages';
+import { newPage } from './pages';
 import { Scan } from './scan';
+import { PageFlow } from './page-flow';
+import { Overlays } from './overlays';
+import { ScreenSwitcher } from './screen-switcher';
 import { StartView } from './start-view';
 import { ErrorView } from './error-view';
 import { CameraView, vibrate } from './camera-view';
 import { CapturedView } from './captured-view';
 import { CropRotateView } from './editor';
 import { ToneView } from './tone-view';
-import { isNeutralTone, type Tone } from './tone';
-import { bakeFrame, bakeTone, frameNeedsBake } from './bake';
+import type { Tone } from './tone';
 import { BackTrap } from './navigation';
 import type { SwipeDirection } from './swipe';
 import type { ZoomState } from './zoom';
-import { detectFrameIn, detectFrameStrict } from './detect';
+import { detectStill } from './live-detect';
 
 export type Screen = 'start' | 'camera' | 'error' | 'captured' | 'edit' | 'tone';
 
@@ -41,33 +46,14 @@ interface State {
   screen: Screen;
   sheetOpen: boolean;
   menuOpen: boolean;
-  busy: boolean;
   level: CompressionLevel;
   cameraError: CameraErrorKind;
   cameraOrigin: CameraOrigin;
 }
 
-/** Cross-fade between screens; written to `--fade` on the app root so styles.css follows it. */
-export const FADE_MS = 150;
-
-/** How long the icon-only error notice stays on screen. */
-export const NOTICE_MS = 2000;
-
+export { FADE_MS } from './screen-switcher';
+export { NOTICE_MS } from './overlays';
 export { CAMERA_ERROR_LABELS } from './error-view';
-
-/**
- * The strict detection on the still, from the static frame. Null when
- * no document is found or the detection fails; the capture then keeps the
- * static frame. Runs synchronously (about 0.5 MP of work).
- */
-function detectStill(image: HTMLCanvasElement, frame: Frame): Frame | null {
-  try {
-    return detectFrameIn(image, frame, image.width, detectFrameStrict);
-  } catch (error) {
-    console.error('Erkennung fehlgeschlagen', error);
-    return null;
-  }
-}
 
 export interface AppOptions {
   /** Build label shown on the start page. */
@@ -82,7 +68,6 @@ export class App {
     screen: 'start',
     sheetOpen: false,
     menuOpen: false,
-    busy: false,
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
     cameraOrigin: 'start',
@@ -90,42 +75,25 @@ export class App {
 
   /** The pages of the scan and which one is on screen. */
   private readonly scan = new Scan();
+  /** Park, wake and bake behind the busy overlay. */
+  private readonly pages: PageFlow;
 
   // Screens
-  private readonly screens: Record<Screen, HTMLElement>;
-  private shownScreen: Screen = 'start';
-  private readonly leaveTimers = new Map<Screen, ReturnType<typeof setTimeout>>();
-
-  // Start
+  private readonly switcher: ScreenSwitcher<Screen>;
   private readonly startView: StartView;
-
-  // Camera
   private readonly cameraView: CameraView;
-  private readonly flash: HTMLElement;
-  /** True while a `startCamera` call is pending, so a second `openCamera` does not start a second stream. */
-  private cameraStarting = false;
-
-  // Camera error
   private readonly errorView: ErrorView;
-
-  // Captured
   private readonly capturedView: CapturedView;
-
-  // Crop/rotate
   private readonly editor: CropRotateView;
-
-  // Brightness/contrast
   private readonly toneView: ToneView;
 
-  // Overlays
-  private readonly busyOverlay: HTMLElement;
-  private readonly notice: HTMLElement;
-  private noticeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** True while a `startCamera` call is pending, so a second `openCamera` does not start a second stream. */
+  private cameraStarting = false;
+  private readonly flash: HTMLElement;
 
-  // Navigation
+  // Overlays, navigation, updates
+  private readonly overlays: Overlays;
   private readonly backTrap: BackTrap;
-
-  // Updates
   private readonly updatePrompt: UpdatePrompt;
 
   /** Detaches the window/document listeners on dispose(). */
@@ -133,27 +101,22 @@ export class App {
 
   constructor(root: HTMLElement, options: AppOptions) {
     this.updatePrompt = new UpdatePrompt(options.updates ?? null, () => this.render());
-    root.style.setProperty('--fade', `${FADE_MS}ms`);
+    this.overlays = new Overlays(() => this.render());
+    this.pages = new PageFlow(this.scan, this.overlays);
 
-    // Start
     this.startView = new StartView(options, {
       onStart: () => void this.openCamera(),
       onUpdate: () => void this.applyUpdate(),
     });
-
-    // Camera
     this.cameraView = new CameraView({
       onBack: () => this.closeCamera(),
       onShutter: () => void this.takePhoto(),
     });
-
     // Camera error: warning, retry, back. No text.
     this.errorView = new ErrorView({
       onBack: () => this.closeCamera(),
       onRetry: () => void this.openCamera(),
     });
-
-    // Captured
     this.capturedView = new CapturedView({
       onBack: () => void this.backFromCaptured(),
       onShare: () => this.openSheet(),
@@ -168,52 +131,45 @@ export class App {
       onShowPage: (index) => void this.showPage(index),
       onSwipe: (direction) => this.onSwipe(direction),
     });
-
-    // Crop/rotate
     this.editor = new CropRotateView({
       onCancel: () => void this.closeEditor(null),
       onConfirm: (frame) => void this.closeEditor(frame),
-      onNotice: () => this.showNotice(),
+      onNotice: () => this.overlays.showNotice(),
     });
-
-    // Brightness/contrast
     this.toneView = new ToneView({
       onCancel: () => void this.closeToneView(null),
       onConfirm: (tone) => void this.closeToneView(tone),
-      onNotice: () => this.showNotice(),
+      onNotice: () => this.overlays.showNotice(),
     });
-
-    // Busy
-    this.busyOverlay = el('div', 'busy');
-    this.busyOverlay.innerHTML = icons.spinner;
-    this.busyOverlay.setAttribute('role', 'status');
-    this.busyOverlay.setAttribute('aria-label', 'Bitte warten');
-    this.busyOverlay.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-
-    // Brief icon-only error notice for share and bake failures.
-    this.notice = el('div', 'notice');
-    this.notice.innerHTML = icons.warning;
-    this.notice.setAttribute('role', 'alert');
-    this.notice.setAttribute('aria-label', 'Fehler');
-    this.notice.querySelector('svg')?.setAttribute('aria-hidden', 'true');
-    this.notice.hidden = true;
 
     // Shutter flash.
     this.flash = el('div', 'flash');
     this.flash.setAttribute('aria-hidden', 'true');
     this.flash.addEventListener('animationend', () => this.flash.classList.remove('active'));
 
-    this.screens = {
-      start: this.startView.element,
-      camera: this.cameraView.element,
-      error: this.errorView.element,
-      captured: this.capturedView.element,
-      edit: this.editor.element,
-      tone: this.toneView.element,
-    };
-    for (const [name, screen] of Object.entries(this.screens)) {
-      screen.hidden = name !== 'start';
-    }
+    this.switcher = new ScreenSwitcher<Screen>(
+      root,
+      {
+        start: this.startView.element,
+        camera: this.cameraView.element,
+        error: this.errorView.element,
+        captured: this.capturedView.element,
+        edit: this.editor.element,
+        tone: this.toneView.element,
+      },
+      'start',
+      {
+        // Entering the captured view always starts from the fitted view.
+        onEnter: (screen) => {
+          if (screen === 'captured') this.capturedView.stage.resetZoom();
+        },
+        // The edit views keep their display copies until they are off screen.
+        onLeft: (screen) => {
+          if (screen === 'edit') this.editor.close();
+          if (screen === 'tone') this.toneView.close();
+        },
+      },
+    );
 
     root.append(
       this.startView.element,
@@ -223,8 +179,8 @@ export class App {
       this.editor.element,
       this.toneView.element,
       this.flash,
-      this.busyOverlay,
-      this.notice,
+      this.overlays.busyElement,
+      this.overlays.noticeElement,
     );
 
     const { signal } = this.listeners;
@@ -279,21 +235,16 @@ export class App {
     this.capturedView.dispose();
     this.editor.dispose();
     this.toneView.dispose();
-    for (const timer of this.leaveTimers.values()) clearTimeout(timer);
-    this.leaveTimers.clear();
-    if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
+    this.switcher.dispose();
+    this.overlays.dispose();
   }
 
   // ---- rendering -------------------------------------------------------
 
   private render(): void {
-    const { screen, sheetOpen, menuOpen, busy, level, cameraError } = this.state;
-    if (screen !== this.shownScreen) {
-      this.switchScreen(this.shownScreen, screen);
-      this.shownScreen = screen;
-    }
+    const { screen, sheetOpen, menuOpen, level, cameraError } = this.state;
+    this.switcher.show(screen);
     this.startView.render({ updateAvailable: this.updatePrompt.available });
-    this.busyOverlay.hidden = !busy;
     this.errorView.render({ kind: cameraError });
     this.capturedView.render({
       active: screen === 'captured',
@@ -306,37 +257,6 @@ export class App {
     });
     if (screen === 'camera') this.cameraView.layout();
     this.backTrap.setActive(screen !== 'start');
-  }
-
-  /**
-   * Cross-fades from one screen to the next: the new screen fades in on top,
-   * the old one stays underneath until the fade is over and is then hidden.
-   */
-  private switchScreen(from: Screen, to: Screen): void {
-    const fromEl = this.screens[from];
-    const toEl = this.screens[to];
-    const pending = this.leaveTimers.get(to);
-    if (pending !== undefined) {
-      clearTimeout(pending);
-      this.leaveTimers.delete(to);
-    }
-    toEl.hidden = false;
-    // Entering the captured view always starts from the fitted view.
-    if (to === 'captured') this.capturedView.stage.resetZoom();
-    toEl.classList.remove('leaving');
-    toEl.classList.add('entering');
-    fromEl.classList.remove('entering');
-    fromEl.classList.add('leaving');
-    const delay = prefersReducedMotion() ? 0 : FADE_MS;
-    const timer = setTimeout(() => {
-      this.leaveTimers.delete(from);
-      fromEl.classList.remove('leaving');
-      fromEl.hidden = true;
-      // The edit views keep their display copies until they are off screen.
-      if (from === 'edit') this.editor.close();
-      if (from === 'tone') this.toneView.close();
-    }, delay);
-    this.leaveTimers.set(from, timer);
   }
 
   /**
@@ -361,26 +281,16 @@ export class App {
     this.capturedView.stage.show(capture);
   }
 
-  /** Shows the warning icon briefly over the current view. */
-  private showNotice(): void {
-    this.notice.hidden = false;
-    if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
-    this.noticeTimer = setTimeout(() => {
-      this.notice.hidden = true;
-      this.noticeTimer = null;
-    }, NOTICE_MS);
-  }
-
-  private fail(logLabel: string, error: unknown): void {
-    console.error(logLabel, error);
-    this.showNotice();
+  /** Nothing may be interrupted while work runs behind the spinner. */
+  private get busy(): boolean {
+    return this.overlays.busy;
   }
 
   // ---- navigation ------------------------------------------------------
 
   /** Hardware back: the same action as the current screen's back button. */
   private handleBack(): void {
-    if (this.state.busy) {
+    if (this.busy) {
       // Nothing can be interrupted; keep the trap armed.
       this.render();
       return;
@@ -423,20 +333,12 @@ export class App {
 
   /** Activates the new build behind the busy overlay; the page reloads on success. */
   private async applyUpdate(): Promise<void> {
-    if (!this.updatePrompt.enabled || this.state.busy) return;
-    this.state.busy = true;
-    this.render();
-    try {
-      await this.updatePrompt.apply();
-    } catch (error) {
-      console.error(error);
-      this.state.busy = false;
-      this.render();
-      this.showNotice();
-    }
+    if (!this.updatePrompt.enabled || this.busy) return;
+    // The update yields on its own, so the spinner shows without waiting for a paint.
+    await this.overlays.run(() => this.updatePrompt.apply(), 'Aktualisierung fehlgeschlagen', { paint: false });
   }
 
-  // ---- transitions -----------------------------------------------------
+  // ---- camera ----------------------------------------------------------
 
   private async openCamera(origin: CameraOrigin = 'start'): Promise<void> {
     if (this.cameraView.session || this.cameraStarting) return;
@@ -474,47 +376,33 @@ export class App {
 
   /** Camera back: to the start page, or back to the page shown before [+]. */
   private closeCamera(): void {
-    if (this.state.busy) return;
+    if (this.busy) return;
     this.cameraView.close();
     if (this.state.cameraOrigin === 'captured' && this.scan.count > 0) {
       void this.returnToCaptured();
       return;
     }
-    this.discardPages();
-    this.showScreen('start');
+    this.leaveScan();
   }
 
   /** Wakes the current page and shows the captured view. */
   private async returnToCaptured(): Promise<void> {
-    const page = this.scan.currentPage();
-    if (page && !(await this.wakeOrLeave(page))) return;
+    if (!(await this.pages.wakeCurrent())) {
+      this.leaveScan();
+      return;
+    }
     this.renderPreview();
     this.showScreen('captured');
   }
 
-  /**
-   * Wakes a parked page behind the busy overlay. When it cannot be decoded
-   * the page is lost: the scan is discarded and the start page shown rather
-   * than a blank view. Returns whether the page holds a canvas.
-   */
-  private async wakeOrLeave(page: Page): Promise<boolean> {
-    if (!page.image) {
-      await this.runBusy(() => this.scan.wake(page), 'Seite konnte nicht geladen werden');
-    }
-    if (page.image) return true;
-    this.discardPages();
-    this.showScreen('start');
-    return false;
-  }
-
   private async takePhoto(): Promise<void> {
     const { session, liveFrame, liveDetect, liveFound } = this.cameraView;
-    if (!session || this.state.busy) return;
+    if (!session || this.busy) return;
     let image: HTMLCanvasElement;
     try {
       image = captureStill(session);
     } catch (error) {
-      this.fail('Aufnahme fehlgeschlagen', error);
+      this.overlays.fail('Aufnahme fehlgeschlagen', error);
       return;
     }
     this.shutterFeedback();
@@ -535,13 +423,11 @@ export class App {
     if (detected) {
       // The bake hands back an upright frame; a failed bake leaves the page
       // with its image and the static frame.
-      await this.runBusy(() => {
-        applyCapture(page, bakeFrame(asCapture(page), detected));
-      }, 'Entzerren fehlgeschlagen', frameNeedsBake(detected));
+      await this.pages.bakeFrame(page, detected, 'Entzerren fehlgeschlagen');
       this.renderPreview();
       this.render();
     } else if (liveFound) {
-      this.showNotice();
+      this.overlays.showNotice();
     }
   }
 
@@ -554,12 +440,14 @@ export class App {
     vibrate(30);
   }
 
+  // ---- pages -----------------------------------------------------------
+
   /**
    * Back from the captured view. With several pages: remove the current page
    * and show its neighbour. With one page: drop it and reopen the camera.
    */
   private async backFromCaptured(): Promise<void> {
-    if (this.state.busy) return;
+    if (this.busy) return;
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
     if (this.scan.count <= 1) {
@@ -575,42 +463,39 @@ export class App {
 
   /** [+]: park the current page and open the camera for the next one. */
   private async addPage(): Promise<void> {
-    if (this.state.busy || this.scan.isFull) return;
-    const page = this.scan.currentPage();
-    if (!page) return;
+    if (this.busy || this.scan.isFull || !this.scan.currentPage()) return;
     this.state.menuOpen = false;
     this.state.sheetOpen = false;
-    await this.runBusy(() => this.scan.park(page), 'Seite konnte nicht abgelegt werden');
-    if (page.image) return; // parking failed; stay on the page
+    if (!(await this.pages.parkCurrent())) return; // parking failed; stay on the page
     this.capturedView.stage.clear();
     await this.openCamera('captured');
   }
 
   /** Previous/next: park the page on screen, wake the target. Not a screen change. */
   private async showPage(index: number): Promise<void> {
-    if (this.state.busy || index < 0 || index >= this.scan.count || index === this.scan.currentIndex) return;
-    const leaving = this.scan.currentPage();
-    if (leaving) {
-      await this.runBusy(() => this.scan.park(leaving), 'Seite konnte nicht abgelegt werden');
-      if (leaving.image) return; // parking failed; stay
-    }
+    if (this.busy || index < 0 || index >= this.scan.count || index === this.scan.currentIndex) return;
+    if (!(await this.pages.parkCurrent())) return; // parking failed; stay
     await this.switchToPage(index);
   }
 
   /** A swipe over the fitted image: next page on left, previous on right, unless something is open. */
   private onSwipe(direction: SwipeDirection): void {
-    if (this.state.busy || this.state.menuOpen || this.state.sheetOpen || this.scan.count < 2) return;
+    if (this.busy || this.state.menuOpen || this.state.sheetOpen || this.scan.count < 2) return;
     if (direction === 'left') void this.showPage(this.scan.currentIndex + 1);
     else void this.showPage(this.scan.currentIndex - 1);
   }
 
-  /** Makes a page current: wakes it if parked and redraws the preview. */
+  /** Makes a page current: wakes it if parked and redraws the preview, or leaves the scan when it is lost. */
   private async switchToPage(index: number): Promise<void> {
-    const page = this.scan.switchTo(index);
-    if (page && !(await this.wakeOrLeave(page))) return;
+    if (!(await this.pages.switchTo(index))) {
+      this.leaveScan();
+      return;
+    }
     this.renderPreview();
     this.render();
   }
+
+  // ---- sheet and popover -----------------------------------------------
 
   private openSheet(): void {
     this.state.level = DEFAULT_COMPRESSION;
@@ -633,6 +518,29 @@ export class App {
     this.render();
   }
 
+  private selectLevel(level: CompressionLevel): void {
+    this.state.level = level;
+    this.render();
+  }
+
+  private async confirmShare(): Promise<void> {
+    if (this.scan.count === 0 || this.busy) return;
+    // Encoding and sharing yield on their own, so the spinner shows without waiting for a paint.
+    const outcome = await this.overlays.run(
+      async () => sharePdf(await buildPdfFile(this.scan.list, this.state.level)),
+      'Teilen fehlgeschlagen',
+      { paint: false },
+    );
+    if (outcome === 'shared') {
+      this.leaveScan();
+      return;
+    }
+    this.state.sheetOpen = false;
+    this.render();
+  }
+
+  // ---- edit views ------------------------------------------------------
+
   private openEditor(): void {
     const capture = this.scan.currentCapture();
     if (!capture) return;
@@ -649,12 +557,10 @@ export class App {
    * has faded out.
    */
   private async closeEditor(frame: Frame | null): Promise<void> {
-    if (this.state.busy || this.state.screen !== 'edit') return;
+    if (this.busy || this.state.screen !== 'edit') return;
     const page = this.scan.currentPage();
-    if (frame && page?.image) {
-      await this.runBusy(() => {
-        applyCapture(page, bakeFrame(asCapture(page), frame));
-      }, hasCornerOffsets(frame) ? 'Entzerren fehlgeschlagen' : 'Drehen fehlgeschlagen', frameNeedsBake(frame));
+    if (frame && page) {
+      await this.pages.bakeFrame(page, frame);
       this.renderPreview();
     }
     this.showScreen('captured');
@@ -674,70 +580,13 @@ export class App {
    * whole image behind the busy overlay. Without: discard the pending values.
    */
   private async closeToneView(tone: Tone | null): Promise<void> {
-    if (this.state.busy || this.state.screen !== 'tone') return;
+    if (this.busy || this.state.screen !== 'tone') return;
     const page = this.scan.currentPage();
-    if (tone && page?.image) {
-      await this.runBusy(() => {
-        applyCapture(page, bakeTone(asCapture(page), tone));
-      }, 'Anpassen fehlgeschlagen', !isNeutralTone(tone));
+    if (tone && page) {
+      await this.pages.bakeTone(page, tone);
       this.renderPreview();
     }
     this.showScreen('captured');
-  }
-
-  /**
-   * Runs pixel work (baking, parking, waking) behind the busy overlay. The
-   * overlay is shown first and the work deferred until it has painted,
-   * otherwise the spinner never appears; work that is not heavy runs inline
-   * without the overlay. Failures leave the image untouched and show the
-   * notice; the caller checks the outcome on the page.
-   */
-  private async runBusy(work: () => void | Promise<void>, logLabel: string, heavy = true): Promise<void> {
-    if (!heavy) {
-      try {
-        await work();
-      } catch (error) {
-        this.fail(logLabel, error);
-      }
-      return;
-    }
-    this.state.busy = true;
-    this.render();
-    await afterPaint();
-    try {
-      await work();
-    } catch (error) {
-      this.fail(logLabel, error);
-    } finally {
-      this.state.busy = false;
-      this.render();
-    }
-  }
-
-  private selectLevel(level: CompressionLevel): void {
-    this.state.level = level;
-    this.render();
-  }
-
-  private async confirmShare(): Promise<void> {
-    if (this.scan.count === 0 || this.state.busy) return;
-    this.state.busy = true;
-    this.render();
-    try {
-      const file = await buildPdfFile(this.scan.list, this.state.level);
-      const outcome = await sharePdf(file);
-      this.state.busy = false;
-      if (outcome === 'shared') {
-        this.discardPages();
-        this.showScreen('start');
-        return;
-      }
-      this.state.sheetOpen = false;
-    } catch (error) {
-      this.state.busy = false;
-      this.fail('Teilen fehlgeschlagen', error);
-    }
-    this.render();
   }
 
   // ---- resources -------------------------------------------------------
@@ -746,6 +595,12 @@ export class App {
   private discardPages(): void {
     this.scan.discard();
     this.capturedView.stage.clear();
+  }
+
+  /** Drops the scan and shows the start page. */
+  private leaveScan(): void {
+    this.discardPages();
+    this.showScreen('start');
   }
 
   private discardEverything(): void {
