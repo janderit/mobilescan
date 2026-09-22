@@ -154,6 +154,28 @@ describe('App', () => {
     expect(startCameraMock).toHaveBeenCalledTimes(2);
   });
 
+  it('starts the camera once when the page becomes visible while it is still starting', async () => {
+    let resolveStart: () => void = () => {};
+    startCameraMock.mockImplementationOnce(
+      (video) =>
+        new Promise<CameraSession>((resolve) => {
+          resolveStart = () => resolve(fakeSession(video));
+        }),
+    );
+    root.querySelector<HTMLButtonElement>('.start-button')!.click();
+    expect(startCameraMock).toHaveBeenCalledTimes(1);
+    // Visible again while the first start is pending: no second stream.
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flush();
+    expect(startCameraMock).toHaveBeenCalledTimes(1);
+    resolveStart();
+    await flush();
+    expect(startCameraMock).toHaveBeenCalledTimes(1);
+    expect(stopCamera).not.toHaveBeenCalled();
+    expect(app.screen).toBe('camera');
+  });
+
   it('fades: the new screen is shown at once, the old one hidden after the fade', async () => {
     vi.useFakeTimers();
     startCameraMock.mockImplementation((video) => Promise.resolve(fakeSession(video)));

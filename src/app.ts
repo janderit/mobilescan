@@ -103,6 +103,8 @@ export class App {
   // Camera
   private readonly cameraView: CameraView;
   private readonly flash: HTMLElement;
+  /** True while a `startCamera` call is pending, so a second `openCamera` does not start a second stream. */
+  private cameraStarting = false;
 
   // Camera error
   private readonly errorStatus: HTMLElement;
@@ -300,6 +302,7 @@ export class App {
     this.cameraView.dispose();
     this.capturedView.dispose();
     this.editor.dispose();
+    this.toneView.dispose();
     for (const timer of this.leaveTimers.values()) clearTimeout(timer);
     this.leaveTimers.clear();
     if (this.noticeTimer !== null) clearTimeout(this.noticeTimer);
@@ -473,13 +476,14 @@ export class App {
   // ---- transitions -----------------------------------------------------
 
   private async openCamera(origin: CameraOrigin = 'start'): Promise<void> {
-    if (this.cameraView.session) return;
+    if (this.cameraView.session || this.cameraStarting) return;
     if (this.state.screen !== 'camera' && this.state.screen !== 'error') {
       this.state.cameraOrigin = origin;
     }
     this.state.screen = 'camera';
     this.render();
     let session: CameraSession;
+    this.cameraStarting = true;
     try {
       session = await startCamera(this.cameraView.video);
     } catch (error) {
@@ -488,6 +492,8 @@ export class App {
       if (this.state.screen === 'camera') this.state.screen = 'error';
       this.render();
       return;
+    } finally {
+      this.cameraStarting = false;
     }
     if (this.state.screen !== 'camera') {
       // Left the camera while it was starting.

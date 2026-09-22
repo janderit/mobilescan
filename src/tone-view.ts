@@ -156,6 +156,12 @@ export class ToneView {
     this.stage.clear();
   }
 
+  /** Releases the view for good: closes it and disconnects the stage's observer. */
+  dispose(): void {
+    this.close();
+    this.stage.dispose();
+  }
+
   /** The zoom state of the stage, for tests. */
   get zoom(): ZoomState {
     return this.stage.zoom;
