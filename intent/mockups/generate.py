@@ -22,6 +22,8 @@ ICON = {
     "rotate-90-right": ("Rotate 90 degrees clockwise", '<rect x="3" y="9" width="9" height="12" rx="1"/><path d="M8 4h6a4 4 0 0 1 4 4v3"/><path d="M15 8l3 3 3-3"/>'),
     "brightness": ("Brightness", '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>'),
     "contrast": ("Contrast", '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>'),
+    "temperature": ("Colour temperature", '<path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/><path d="M12 9v6"/>'),
+    "grayscale": ("Grayscale (drop colour)", '<path d="M12 2.7l5.7 6.4a7.5 7.5 0 1 1-11.4 0z"/><path d="M4 4l16 16"/>'),
     "check": ("Confirm", '<path d="M20 6L9 17l-5-5"/>'),
     "close": ("Cancel / dismiss", '<path d="M18 6L6 18M6 6l12 12"/>'),
     "file-small": ("Compression: small file, lower quality", '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 17h8"/>'),
@@ -203,16 +205,26 @@ def slider(x, y, w, value, icon):
             f'<circle cx="{kx:.0f}" cy="{y}" r="14" fill="#ffffff" stroke="#1e40af" stroke-width="2"/>'
             f'<line x1="{x+w/2}" y1="{y-10}" x2="{x+w/2}" y2="{y+10}" stroke="#9ca3af" stroke-width="1"/>')
 
-def bc(mode):
-    filt = 'filter="brightness(1.15)"' if mode == 0 else 'filter="contrast(1.3)"'
+def bc(mode, gray=False):
+    """mode: 0 brightness, 1 contrast, 2 temperature. gray: grayscale toggle on."""
+    filt = ['filter="brightness(1.15)"', 'filter="contrast(1.3)"', 'filter="url(#warm)"'][mode]
+    if gray:
+        filt = 'filter="grayscale(1)"'
     # captured view shows only the frame area
     fw = 350; fh = 470; fx = 20; fy = 60
-    body = (f'<rect x="{fx}" y="{fy}" width="{fw}" height="{fh}" fill="#6b7280"/>'
+    body = ('<filter id="warm" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" '
+            'values="1.12 0 0 0 0  0 1 0 0 0  0 0 0.88 0 0  0 0 0 1 0"/></filter>'
+            + f'<rect x="{fx}" y="{fy}" width="{fw}" height="{fh}" fill="#6b7280"/>'
             + f'<clipPath id="bc"><rect x="{fx}" y="{fy}" width="{fw}" height="{fh}"/></clipPath>'
-            + f'<g clip-path="url(#bc)" {filt}>' + paper(40, 90, 310, 440, rot=-4) + '</g>')
-    body += slider(50, 620, 290, 0.62 if mode == 0 else 0.7, "brightness")
-    body += (btn("arrow-left", 55, BAR) + segmented(195, BAR, ["brightness", "contrast"], mode, w=130)
-             + btn("check", 335, BAR, fill="#1e40af", stroke="#1e40af", color="#ffffff"))
+            + f'<g clip-path="url(#bc)" {filt}>' + paper(40, 90, 310, 440, rot=-4, bg="#f4ecd8") + '</g>')
+    # slider: tick at neutral (middle for brightness and temperature, a third for contrast)
+    body += slider(50, 620, 290, [0.62, 0.7, 0.8][mode], "brightness")
+    gray_btn = (btn("grayscale", 275, BAR, r=26, fill="#1e40af", stroke="#1e40af", color="#ffffff", size=24)
+                if gray else btn("grayscale", 275, BAR, r=26, size=24))
+    body += (btn("arrow-left", 40, BAR, r=26, size=24)
+             + segmented(150, BAR, ["brightness", "contrast", "temperature"], mode, w=150, h=44)
+             + gray_btn
+             + btn("check", 345, BAR, r=26, fill="#1e40af", stroke="#1e40af", color="#ffffff", size=24))
     return body
 
 def busy():
@@ -237,6 +249,8 @@ SCREENS = [
     ("v0.2-04-rotated-90", "v0.2 After one 90° tap", rotated_90(), "#ffffff", "After one 90° tap: image and frame turned."),
     ("v0.3-01-brightness", "v0.3 Brightness", bc(0), "#ffffff", "Brightness: one slider, live CSS-filter preview."),
     ("v0.3-02-contrast", "v0.3 Contrast", bc(1), "#ffffff", "Contrast: same slider, toggle selects the value."),
+    ("v0.3-03-temperature", "v0.3 Colour temperature", bc(2), "#ffffff", "Temperature: cool .. warm, neutral in the middle."),
+    ("v0.3-04-grayscale", "v0.3 Grayscale toggle", bc(0, gray=True), "#ffffff", "Grayscale toggle on: colour dropped, values still apply."),
     ("v0.4-01-camera-error", "v0.4 Camera unavailable", camera_error(), "#111827", "Camera unavailable: icon-only error, retry, back."),
 ]
 

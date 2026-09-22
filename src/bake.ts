@@ -6,7 +6,14 @@
 import type { Capture, Frame } from './model';
 import { bakeLayout } from './geometry';
 import { releaseCanvas } from './share';
-import { applyTonePixels, isNeutralTone, toneFilter, toneLookup, type Tone } from './tone';
+import {
+  applyTonePixels,
+  isNeutralTone,
+  toneFilter,
+  toneLookups,
+  toneUsesShorthandOnly,
+  type Tone,
+} from './tone';
 
 /**
  * Returns a capture whose frame is upright. For angle 0 the image is reused
@@ -48,9 +55,14 @@ function contextSupportsFilter(): boolean {
 }
 
 /**
- * Bakes brightness/contrast into the whole captured image (v0.3 confirm), so
- * that later cropping stays consistent. Neutral values return the capture
- * untouched. The frame is unchanged; the old canvas is released.
+ * Bakes brightness, contrast, temperature and grayscale into the whole
+ * captured image (v0.3 confirm), so that later cropping stays consistent.
+ * Neutral values return the capture untouched. The frame is unchanged; the
+ * old canvas is released.
+ *
+ * The 2D context filter is used when the chain consists of CSS shorthand
+ * functions only; the temperature step needs an SVG filter reference, which
+ * canvas contexts do not support everywhere, so it goes through the pixel loop.
  */
 export function bakeTone(capture: Capture, tone: Tone): Capture {
   if (isNeutralTone(tone)) {
@@ -64,17 +76,17 @@ export function bakeTone(capture: Capture, tone: Tone): Capture {
   if (!ctx) {
     throw new Error('2d context unavailable');
   }
-  if (contextSupportsFilter()) {
+  if (toneUsesShorthandOnly(tone) && contextSupportsFilter()) {
     ctx.filter = toneFilter(tone);
     ctx.drawImage(image, 0, 0);
     ctx.filter = 'none';
   } else {
     ctx.drawImage(image, 0, 0);
-    const lut = toneLookup(tone);
+    const luts = toneLookups(tone);
     for (let y = 0; y < canvas.height; y += FALLBACK_STRIP_ROWS) {
       const rows = Math.min(FALLBACK_STRIP_ROWS, canvas.height - y);
       const strip = ctx.getImageData(0, y, canvas.width, rows);
-      applyTonePixels(strip.data, tone, lut);
+      applyTonePixels(strip.data, tone, luts);
       ctx.putImageData(strip, 0, y);
     }
   }

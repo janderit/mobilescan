@@ -4,7 +4,7 @@ MobileScan is a progressive web app that allows users to scan paper documents on
 
 ## Project state
 
-v0.3 is implemented (capture + share, crop/rotate, brightness/contrast). Run `npm install`, then `npm run dev` for a local HTTPS
+v0.3 is implemented (capture + share, crop/rotate, brightness/contrast/temperature, grayscale). Run `npm install`, then `npm run dev` for a local HTTPS
 dev server reachable from a phone on the LAN, or `npm run build` / `npm run deploy`; see
 `CLAUDE.md` for the full command list. The spec below is the authoritative UX description.
 Open questions in it have been resolved and the resolutions are recorded in `intent/`:
@@ -76,8 +76,9 @@ Cropping results simply store the updated frame size, i.e. cropping does not mod
 Details: `intent/v0.2-crop-rotate.md`, mockups `intent/mockups/v0.2-*.svg`.
 
 ### Brightness/contrast
-Similar buttons to crop/rotate: [back] [brightness|contrast] [ok]
-One slider below the image adjusts the value selected by the toggle.
+Similar buttons to crop/rotate: [back] [brightness|contrast|temperature] [b/w] [ok]
+One slider below the image adjusts the value selected by the toggle: brightness, contrast, or colour temperature (cool .. warm), the latter for neutralising a colour cast that contrast edits bring out on white paper.
+The b/w button toggles a conversion to grayscale.
 Adjusting changes the displayed image but not yet the image itself (optimize for touch reaction speed).
 Pressing ok then applies the changes to the image.
 

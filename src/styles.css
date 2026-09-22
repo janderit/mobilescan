@@ -454,6 +454,19 @@ button {
   will-change: filter;
 }
 
+/* Holds the temperature colour matrix referenced by the preview filter. */
+.tone-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Three segments plus the grayscale toggle must fit a 360 px wide bar. */
+.segmented-tone button {
+  width: 44px;
+}
+
 .tone-slider-wrap {
   --fill: 50%;
   --tick: 50%;
