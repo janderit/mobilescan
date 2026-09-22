@@ -1,4 +1,5 @@
-# MobileScan static hosting on uberspace (Apache).
+# MobileScan static hosting on uberspace (Apache). This file is deployed to
+# the app/ directory; the product page at the site root is served without it.
 # No rewrite rules: this is a plain static file deployment.
 
 AddType application/manifest+json .webmanifest
@@ -7,12 +8,12 @@ AddType application/javascript .mjs
 # <Files>/<FilesMatch> only match the basename, so hashed files under
 # /assets/ are tagged via SetEnvIf on the request URI instead (mod_setenvif,
 # not mod_rewrite).
-SetEnvIf Request_URI "^/assets/" MOBILESCAN_IMMUTABLE
+SetEnvIf Request_URI "^/app/assets/" MOBILESCAN_IMMUTABLE
 
 <IfModule mod_headers.c>
-    # Required for the service worker to control the whole origin.
+    # Lets the service worker at /app/sw.js control the /app/ scope.
     <Files "sw.js">
-        Header set Service-Worker-Allowed "/"
+        Header set Service-Worker-Allowed "/app/"
     </Files>
 
     # Never let the browser/proxy cache the files that decide which build is

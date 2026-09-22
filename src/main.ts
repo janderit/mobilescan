@@ -102,7 +102,15 @@ class App {
     const startButton = el('button', 'start-button', 'Dokument scannen');
     startButton.type = 'button';
     startButton.addEventListener('click', () => void this.openCamera());
-    this.startScreen = el('section', 'screen screen-start', el('h1', 'app-title', 'MobileScan'), startButton);
+    // Version line: makes it visible on the phone whether a new build has arrived.
+    const version = el('p', 'app-version', `v${__APP_VERSION__} (${__APP_BUILD__})`);
+    this.startScreen = el(
+      'section',
+      'screen screen-start',
+      el('h1', 'app-title', 'MobileScan'),
+      startButton,
+      version,
+    );
 
     // Camera
     this.video = document.createElement('video');

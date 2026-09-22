@@ -1,5 +1,7 @@
 #!/bin/sh
-# Deploys the built app (dist/) to the uberspace host via scp.
+# Deploys to the uberspace host via rsync/scp:
+#   dist/            -> $DEPLOY_PATH/app/      (the PWA, served at /app/)
+#   site/index.html  -> $DEPLOY_PATH/index.html (the product page at the site root)
 # Reads DEPLOY_HOST and DEPLOY_PATH from a git-ignored .env in the repo root.
 # Run via `npm run deploy` (which builds first) or directly once dist/ exists.
 set -eu
@@ -8,6 +10,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 env_file="$repo_root/.env"
 dist_dir="$repo_root/dist"
+site_dir="$repo_root/site"
 
 if [ ! -f "$env_file" ]; then
     echo "deploy.sh: $env_file not found. Copy .env.example to .env and fill in DEPLOY_HOST / DEPLOY_PATH." >&2
@@ -32,15 +35,27 @@ if [ ! -f "$dist_dir/.htaccess" ]; then
     exit 1
 fi
 
-echo "deploy.sh: deploying $dist_dir/ to $DEPLOY_HOST:$DEPLOY_PATH/"
+if [ ! -f "$site_dir/index.html" ]; then
+    echo "deploy.sh: $site_dir/index.html not found." >&2
+    exit 1
+fi
+
+app_path="$DEPLOY_PATH/app"
+
+echo "deploy.sh: deploying $dist_dir/ to $DEPLOY_HOST:$app_path/"
+echo "deploy.sh: deploying $site_dir/index.html to $DEPLOY_HOST:$DEPLOY_PATH/index.html"
 
 if command -v rsync >/dev/null 2>&1; then
     # rsync copies dotfiles like .htaccess without special-casing.
-    rsync -az --delete "$dist_dir/" "$DEPLOY_HOST:$DEPLOY_PATH/"
+    # --delete is scoped to app/, so the product page at the root is untouched.
+    rsync -az --delete "$dist_dir/" "$DEPLOY_HOST:$app_path/"
+    rsync -az "$site_dir/index.html" "$DEPLOY_HOST:$DEPLOY_PATH/index.html"
 else
     # Plain `scp -r dist/.` can silently skip dotfiles on some scp
     # implementations, so copy visible files and .htaccess explicitly.
-    scp -r "$dist_dir"/* "$dist_dir/.htaccess" "$DEPLOY_HOST:$DEPLOY_PATH/"
+    ssh "$DEPLOY_HOST" "mkdir -p '$app_path'"
+    scp -r "$dist_dir"/* "$dist_dir/.htaccess" "$DEPLOY_HOST:$app_path/"
+    scp "$site_dir/index.html" "$DEPLOY_HOST:$DEPLOY_PATH/index.html"
 fi
 
 echo "deploy.sh: done."

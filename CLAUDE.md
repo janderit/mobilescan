@@ -18,12 +18,18 @@ TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
   type-checks (`tsc --noEmit`), then builds the static site into `dist/`.
 - `npm test`: runs the Vitest suite (`test/**/*.test.ts`).
 - `npm run lint`: runs ESLint.
-- `npm run deploy`: builds, then runs `scripts/deploy.sh` to scp `dist/` to the host, reading
-  `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env` (copy `.env.example` to start one).
+- `npm run deploy`: builds, then runs `scripts/deploy.sh`, which copies `dist/` to
+  `$DEPLOY_PATH/app/` (the PWA is served at https://mobilescan.app/app/, Vite `base: '/app/'`)
+  and `site/index.html` to `$DEPLOY_PATH/index.html` (the product page at the site root).
+  Reads `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env` (copy `.env.example` to start one).
+- The start page shows `v<package.json version> (<git short hash>)`, injected at build time via
+  `define` in `vite.config.ts`, so it is visible on the phone whether an update has arrived.
+  Bump `version` in `package.json` when releasing.
 
 Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
-(`render-icons.mjs`, `deploy.sh`), `public/` static files served as-is, including `.htaccess`
-for the Apache MIME types and cache headers uberspace needs.
+(`render-icons.mjs`, `deploy.sh`), `public/` static files served as-is under `/app/`, including
+`.htaccess` for the Apache MIME types and cache headers uberspace needs, `site/` the static
+product page deployed to the site root.
 
 Read in this order before implementing anything:
 
