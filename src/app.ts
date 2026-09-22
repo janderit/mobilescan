@@ -1,11 +1,12 @@
 /**
  * MobileScan app shell: start -> camera (or camera error) -> captured ->
- * (share sheet | edit popover -> crop/rotate | brightness/contrast) -> busy.
- * One in-memory state machine, plain DOM, no persistence.
+ * (share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
+ * One in-memory state machine, plain DOM, no persistence. A scan is a list of
+ * pages of which only the current one holds a full-resolution canvas (v0.5).
  */
 
 import * as icons from './icons';
-import type { Capture, CompressionLevel } from './model';
+import { MAX_PAGES, type Capture, type CompressionLevel, type Page } from './model';
 import { afterPaint, iconButton, prefersReducedMotion } from './ui';
 import { coverTransform, frameToViewRect, initialFrame, scaleFrame, visibleImageRect } from './geometry';
 import type { Frame } from './model';
@@ -18,14 +19,20 @@ import {
   type CameraErrorKind,
   type CameraSession,
 } from './camera';
-import { buildPdfFile, releaseCanvas, renderFrame, sharePdf } from './share';
+import { buildPdfFile, renderFrame, sharePdf } from './share';
+import { releaseCanvas } from './canvas';
+import { applyCapture, asCapture, newPage, parkPage, releasePage, wakePage } from './pages';
 import { CropRotateView } from './editor';
 import { ToneView } from './tone-view';
 import { isNeutralTone, type Tone } from './tone';
 import { bakeRotation, bakeTone } from './bake';
 import { BackTrap } from './navigation';
+import { swipeDirection } from './swipe';
 
 export type Screen = 'start' | 'camera' | 'error' | 'captured' | 'edit' | 'tone';
+
+/** Where the camera was opened from; camera back returns there. */
+type CameraOrigin = 'start' | 'captured';
 
 interface State {
   screen: Screen;
@@ -34,6 +41,7 @@ interface State {
   busy: boolean;
   level: CompressionLevel;
   cameraError: CameraErrorKind;
+  cameraOrigin: CameraOrigin;
 }
 
 /** Long side of the on-screen preview canvas; the PDF uses the full frame. */
@@ -70,6 +78,12 @@ export const CAMERA_ERROR_LABELS: Record<CameraErrorKind, string> = {
   insecure: 'Kamera nur über eine sichere Verbindung verfügbar',
 };
 
+/** Disabled look and no action, without removing the button from the focus order. */
+function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
+  button.setAttribute('aria-disabled', String(disabled));
+  button.disabled = disabled;
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className: string,
@@ -95,9 +109,13 @@ export class App {
     busy: false,
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
+    cameraOrigin: 'start',
   };
 
-  private capture: Capture | null = null;
+  /** Pages in capture order; empty outside a scan. */
+  private readonly pages: Page[] = [];
+  /** Index of the page on screen. */
+  private current = 0;
   private session: CameraSession | null = null;
   /** Frame shown over the live video, in track pixel coordinates. */
   private liveFrame: Frame | null = null;
@@ -121,6 +139,13 @@ export class App {
   private readonly previewCanvas: HTMLCanvasElement;
   private readonly menuBackdrop: HTMLElement;
   private readonly editButton: HTMLButtonElement;
+  private readonly addButton: HTMLButtonElement;
+  private readonly pageHeader: HTMLElement;
+  private readonly previousButton: HTMLButtonElement;
+  private readonly nextButton: HTMLButtonElement;
+  private readonly pagePosition: HTMLElement;
+  /** Start of a pointer drag over the captured stage, for swipe detection. */
+  private swipeStart: { id: number; x: number; y: number } | null = null;
 
   // Crop/rotate
   private readonly editor: CropRotateView;
@@ -195,12 +220,24 @@ export class App {
     this.previewCanvas = document.createElement('canvas');
     this.previewCanvas.className = 'captured-canvas';
     const capturedBack = iconButton(icons.arrowLeft, 'Zurück');
-    capturedBack.addEventListener('click', () => void this.retake());
+    capturedBack.addEventListener('click', () => void this.backFromCaptured());
     const shareButton = iconButton(icons.share, 'Teilen', 'primary');
     shareButton.addEventListener('click', () => this.openSheet());
     this.editButton = iconButton(icons.edit, 'Bearbeiten');
     this.editButton.setAttribute('aria-haspopup', 'menu');
     this.editButton.addEventListener('click', () => this.toggleMenu());
+    this.addButton = iconButton(icons.addPage, 'Weitere Seite scannen');
+    this.addButton.addEventListener('click', () => void this.addPage());
+
+    // Page header: [previous] "n/m" [next], only with two or more pages.
+    this.previousButton = iconButton(icons.chevronLeft, 'Vorherige Seite', 'compact page-arrow');
+    this.previousButton.addEventListener('click', () => void this.showPage(this.current - 1));
+    this.nextButton = iconButton(icons.chevronRight, 'Nächste Seite', 'compact page-arrow');
+    this.nextButton.addEventListener('click', () => void this.showPage(this.current + 1));
+    this.pagePosition = el('span', 'page-position');
+    this.pagePosition.setAttribute('aria-live', 'polite');
+    this.pageHeader = el('div', 'page-header', this.previousButton, this.pagePosition, this.nextButton);
+    this.pageHeader.hidden = true;
 
     // Edit popover: crop/rotate, brightness/contrast.
     const cropItem = iconButton(icons.crop, 'Zuschneiden und drehen', 'compact');
@@ -253,11 +290,20 @@ export class App {
       if (event.target === this.sheetBackdrop) this.closeSheet();
     });
 
+    // Swiping over the image moves between pages like the arrows.
+    const capturedStage = el('div', 'captured-stage', this.previewCanvas);
+    capturedStage.addEventListener('pointerdown', (event) => this.onSwipeStart(event));
+    capturedStage.addEventListener('pointerup', (event) => this.onSwipeEnd(event));
+    capturedStage.addEventListener('pointercancel', () => {
+      this.swipeStart = null;
+    });
+
     const capturedScreen = el(
       'section',
       'screen screen-captured',
-      el('div', 'captured-stage', this.previewCanvas),
-      el('div', 'button-bar', capturedBack, shareButton, this.editButton),
+      this.pageHeader,
+      capturedStage,
+      el('div', 'button-bar', capturedBack, shareButton, this.editButton, this.addButton),
       this.menuBackdrop,
       this.sheetBackdrop,
     );
@@ -346,6 +392,26 @@ export class App {
     return this.state.screen;
   }
 
+  /** Number of pages in the scan, for tests. */
+  get pageCount(): number {
+    return this.pages.length;
+  }
+
+  /** Index of the page on screen, for tests. */
+  get currentIndex(): number {
+    return this.current;
+  }
+
+  /** Pages holding a full-resolution canvas; must never exceed one (tests). */
+  get liveCanvasCount(): number {
+    return this.pages.filter((page) => page.image !== null).length;
+  }
+
+  /** Read-only view of the pages, for tests. */
+  get pageList(): readonly Page[] {
+    return this.pages;
+  }
+
   /** Releases resources and detaches global listeners (tests). */
   dispose(): void {
     this.discardEverything();
@@ -372,6 +438,7 @@ export class App {
     for (const l of COMPRESSION_LEVELS) {
       this.levelButtons[l].setAttribute('aria-checked', String(l === level));
     }
+    this.renderPageHeader();
     if (screen === 'camera') this.layoutFrame();
     this.backTrap.setActive(screen !== 'start');
   }
@@ -429,8 +496,28 @@ export class App {
     this.frameOverlay.hidden = false;
   }
 
+  /** Page navigation above the image; hidden with a single page. */
+  private renderPageHeader(): void {
+    const count = this.pages.length;
+    this.pageHeader.hidden = count <= 1;
+    this.pagePosition.textContent = count > 0 ? `${this.current + 1}/${count}` : '';
+    setDisabled(this.previousButton, this.current <= 0);
+    setDisabled(this.nextButton, this.current >= count - 1);
+    setDisabled(this.addButton, count >= MAX_PAGES);
+  }
+
+  private currentPage(): Page | null {
+    return this.pages[this.current] ?? null;
+  }
+
+  /** The current page as a capture; null when it is parked or absent. */
+  private currentCapture(): Capture | null {
+    const page = this.currentPage();
+    return page?.image ? asCapture(page) : null;
+  }
+
   private renderPreview(): void {
-    const capture = this.capture;
+    const capture = this.currentCapture();
     if (!capture) {
       releaseCanvas(this.previewCanvas);
       return;
@@ -474,7 +561,7 @@ export class App {
       case 'captured':
         if (this.state.sheetOpen) this.closeSheet();
         else if (this.state.menuOpen) this.closeMenu();
-        else void this.retake();
+        else void this.backFromCaptured();
         break;
       case 'edit':
         void this.closeEditor(null);
@@ -499,8 +586,11 @@ export class App {
 
   // ---- transitions -----------------------------------------------------
 
-  private async openCamera(): Promise<void> {
+  private async openCamera(origin: CameraOrigin = 'start'): Promise<void> {
     if (this.session) return;
+    if (this.state.screen !== 'camera' && this.state.screen !== 'error') {
+      this.state.cameraOrigin = origin;
+    }
     this.state.screen = 'camera';
     this.render();
     try {
@@ -520,9 +610,36 @@ export class App {
     this.render();
   }
 
+  /** Camera back: to the start page, or back to the page shown before [+]. */
   private closeCamera(): void {
+    if (this.state.busy) return;
     this.stopSession();
+    if (this.state.cameraOrigin === 'captured' && this.pages.length > 0) {
+      void this.returnToCaptured();
+      return;
+    }
+    this.discardPages();
     this.state.screen = 'start';
+    this.render();
+  }
+
+  /** Wakes the current page and shows the captured view. */
+  private async returnToCaptured(): Promise<void> {
+    const page = this.currentPage();
+    if (page && !page.image) {
+      await this.runBusyAsync(() => wakePage(page), 'Seite konnte nicht geladen werden');
+      if (!page.image) {
+        // The page is lost; fall back to the start page rather than a blank view.
+        this.discardPages();
+        this.state.screen = 'start';
+        this.render();
+        return;
+      }
+    }
+    this.renderPreview();
+    this.state.screen = 'captured';
+    this.state.sheetOpen = false;
+    this.state.menuOpen = false;
     this.render();
   }
 
@@ -542,7 +659,9 @@ export class App {
       ? scaleFrame(this.liveFrame, image.width / session.width)
       : initialFrame(image.width, image.height);
     this.stopSession();
-    this.capture = { image, frame };
+    // Appended after the last page; the previous current page was parked by [+].
+    this.pages.push(newPage({ image, frame }));
+    this.current = this.pages.length - 1;
     this.renderPreview();
     this.state.screen = 'captured';
     this.state.sheetOpen = false;
@@ -565,12 +684,74 @@ export class App {
     }
   }
 
-  /** Back from the captured view: drop the image and reopen the camera directly. */
-  private async retake(): Promise<void> {
-    this.discardCapture();
+  /**
+   * Back from the captured view. With several pages: remove the current page
+   * and show its neighbour. With one page: drop it and reopen the camera.
+   */
+  private async backFromCaptured(): Promise<void> {
+    if (this.state.busy) return;
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
-    await this.openCamera();
+    if (this.pages.length <= 1) {
+      this.discardPages();
+      await this.openCamera('start');
+      return;
+    }
+    const [removed] = this.pages.splice(this.current, 1);
+    if (removed) releasePage(removed);
+    releaseCanvas(this.previewCanvas);
+    // The previous page, or the next one if the first page was removed.
+    await this.switchToPage(Math.max(0, this.current - 1));
+  }
+
+  /** [+]: park the current page and open the camera for the next one. */
+  private async addPage(): Promise<void> {
+    if (this.state.busy || this.pages.length >= MAX_PAGES) return;
+    const page = this.currentPage();
+    if (!page) return;
+    this.state.menuOpen = false;
+    this.state.sheetOpen = false;
+    await this.runBusyAsync(() => parkPage(page), 'Seite konnte nicht abgelegt werden');
+    if (page.image) return; // parking failed; stay on the page
+    releaseCanvas(this.previewCanvas);
+    await this.openCamera('captured');
+  }
+
+  /** Previous/next: park the page on screen, wake the target. Not a screen change. */
+  private async showPage(index: number): Promise<void> {
+    if (this.state.busy || index < 0 || index >= this.pages.length || index === this.current) return;
+    const leaving = this.currentPage();
+    if (leaving) {
+      await this.runBusyAsync(() => parkPage(leaving), 'Seite konnte nicht abgelegt werden');
+      if (leaving.image) return; // parking failed; stay
+    }
+    await this.switchToPage(index);
+  }
+
+  private onSwipeStart(event: PointerEvent): void {
+    if (!event.isPrimary) return;
+    this.swipeStart = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }
+
+  private onSwipeEnd(event: PointerEvent): void {
+    const start = this.swipeStart;
+    if (!start || event.pointerId !== start.id) return;
+    this.swipeStart = null;
+    if (this.state.busy || this.state.menuOpen || this.state.sheetOpen || this.pages.length < 2) return;
+    const direction = swipeDirection(event.clientX - start.x, event.clientY - start.y);
+    if (direction === 'left') void this.showPage(this.current + 1);
+    else if (direction === 'right') void this.showPage(this.current - 1);
+  }
+
+  /** Makes a page current: wakes it if parked and redraws the preview. */
+  private async switchToPage(index: number): Promise<void> {
+    this.current = index;
+    const page = this.currentPage();
+    if (page && !page.image) {
+      await this.runBusyAsync(() => wakePage(page), 'Seite konnte nicht geladen werden');
+    }
+    this.renderPreview();
+    this.render();
   }
 
   private openSheet(): void {
@@ -595,7 +776,7 @@ export class App {
   }
 
   private openEditor(): void {
-    const capture = this.capture;
+    const capture = this.currentCapture();
     if (!capture) return;
     this.state.menuOpen = false;
     this.state.screen = 'edit';
@@ -610,9 +791,10 @@ export class App {
    */
   private async closeEditor(frame: Frame | null): Promise<void> {
     if (this.state.busy || this.state.screen !== 'edit') return;
-    if (frame && this.capture) {
+    const page = this.currentPage();
+    if (frame && page?.image) {
       await this.runBusy(() => {
-        if (this.capture) this.capture = bakeRotation(this.capture, frame);
+        applyCapture(page, bakeRotation(asCapture(page), frame));
       }, 'Drehen fehlgeschlagen', frame.angle !== 0);
       this.renderPreview();
     }
@@ -621,7 +803,7 @@ export class App {
   }
 
   private openToneView(): void {
-    const capture = this.capture;
+    const capture = this.currentCapture();
     if (!capture) return;
     this.state.menuOpen = false;
     this.state.screen = 'tone';
@@ -635,9 +817,10 @@ export class App {
    */
   private async closeToneView(tone: Tone | null): Promise<void> {
     if (this.state.busy || this.state.screen !== 'tone') return;
-    if (tone && this.capture) {
+    const page = this.currentPage();
+    if (tone && page?.image) {
       await this.runBusy(() => {
-        if (this.capture) this.capture = bakeTone(this.capture, tone);
+        applyCapture(page, bakeTone(asCapture(page), tone));
       }, 'Anpassen fehlgeschlagen', !isNeutralTone(tone));
       this.renderPreview();
     }
@@ -673,23 +856,40 @@ export class App {
     }
   }
 
+  /**
+   * Runs asynchronous work (parking, waking) behind the busy overlay.
+   * Failures show the notice; the caller checks the outcome on the page.
+   */
+  private async runBusyAsync(work: () => Promise<void>, failMessage: string): Promise<void> {
+    this.state.busy = true;
+    this.render();
+    await afterPaint();
+    try {
+      await work();
+    } catch (error) {
+      this.fail(failMessage, error);
+    } finally {
+      this.state.busy = false;
+      this.render();
+    }
+  }
+
   private selectLevel(level: CompressionLevel): void {
     this.state.level = level;
     this.render();
   }
 
   private async confirmShare(): Promise<void> {
-    const capture = this.capture;
-    if (!capture || this.state.busy) return;
+    if (this.pages.length === 0 || this.state.busy) return;
     this.state.busy = true;
     this.render();
     try {
-      const file = await buildPdfFile(capture, this.state.level);
+      const file = await buildPdfFile(this.pages, this.state.level);
       const outcome = await sharePdf(file);
       this.state.busy = false;
       this.state.sheetOpen = false;
       if (outcome === 'shared') {
-        this.discardCapture();
+        this.discardPages();
         this.state.screen = 'start';
       }
     } catch (error) {
@@ -710,11 +910,11 @@ export class App {
     this.frameOverlay.hidden = true;
   }
 
-  private discardCapture(): void {
-    if (this.capture) {
-      releaseCanvas(this.capture.image);
-      this.capture = null;
-    }
+  /** Drops every page of the scan; nothing is retained. */
+  private discardPages(): void {
+    for (const page of this.pages) releasePage(page);
+    this.pages.length = 0;
+    this.current = 0;
     releaseCanvas(this.previewCanvas);
   }
 
@@ -722,6 +922,6 @@ export class App {
     this.stopSession();
     this.editor.close();
     this.toneView.close();
-    this.discardCapture();
+    this.discardPages();
   }
 }

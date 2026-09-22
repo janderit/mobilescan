@@ -1,11 +1,16 @@
 /**
- * Frame region -> JPEG -> single-page A4 PDF -> Web Share (or download fallback).
+ * Frame regions -> JPEGs -> A4 PDF (one page per scan) -> Web Share (or
+ * download fallback).
  */
 
-import type { Capture, CompressionLevel } from './model';
+import type { Capture, CompressionLevel, Page } from './model';
 import { frameSourceRect } from './geometry';
 import { jpegQuality } from './quality';
-import { buildPdf, pdfFileName } from './pdf';
+import { buildPdf, pdfFileName, type PdfImage } from './pdf';
+import { createCanvas, releaseCanvas } from './canvas';
+import { decodePage } from './pages';
+
+export { releaseCanvas } from './canvas';
 
 export type ShareOutcome = 'shared' | 'aborted';
 
@@ -25,13 +30,7 @@ export function renderFrame(capture: Capture, maxLongSide?: number): HTMLCanvasE
       height = Math.round(height * scale);
     }
   }
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, width);
-  canvas.height = Math.max(1, height);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('2d context unavailable');
-  }
+  const { canvas, ctx } = createCanvas(width, height);
   ctx.drawImage(
     capture.image,
     src.x,
@@ -44,12 +43,6 @@ export function renderFrame(capture: Capture, maxLongSide?: number): HTMLCanvasE
     canvas.height,
   );
   return canvas;
-}
-
-/** Releases the pixel buffer of a canvas. */
-export function releaseCanvas(canvas: HTMLCanvasElement): void {
-  canvas.width = 0;
-  canvas.height = 0;
 }
 
 function encodeJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
@@ -71,19 +64,41 @@ function encodeJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Ar
   });
 }
 
-/** Builds the PDF file for the frame region of a capture at the given compression. */
-export async function buildPdfFile(capture: Capture, level: CompressionLevel): Promise<File> {
-  const canvas = renderFrame(capture);
+/** Renders and encodes the frame region of one page. */
+async function encodePage(page: Page, quality: number): Promise<PdfImage> {
+  // A parked page is decoded into a temporary canvas; the current page is
+  // encoded from its live canvas. Peak memory: one full canvas plus one frame canvas.
+  const full = page.image ?? (await decodePage(page));
+  const temporary = full !== page.image;
   try {
-    const jpeg = await encodeJpeg(canvas, jpegQuality(level));
-    const pdf = await buildPdf(jpeg, canvas.width, canvas.height);
-    const bytes = new Uint8Array(pdf.byteLength);
-    bytes.set(pdf);
-    return new File([bytes], pdfFileName(new Date()), { type: 'application/pdf' });
+    const frame = renderFrame({ image: full, frame: page.frame });
+    try {
+      const jpeg = await encodeJpeg(frame, quality);
+      return { jpeg, width: frame.width, height: frame.height };
+    } finally {
+      releaseCanvas(frame);
+    }
   } finally {
-    releaseCanvas(canvas);
+    if (temporary) releaseCanvas(full);
   }
 }
+
+/**
+ * Builds the PDF file with one page per scan, in order, at the given
+ * compression. Pages are encoded one after the other.
+ */
+export async function buildPdfFile(pages: readonly Page[], level: CompressionLevel): Promise<File> {
+  const quality = jpegQuality(level);
+  const images: PdfImage[] = [];
+  for (const page of pages) {
+    images.push(await encodePage(page, quality));
+  }
+  const pdf = await buildPdf(images);
+  const bytes = new Uint8Array(pdf.byteLength);
+  bytes.set(pdf);
+  return new File([bytes], pdfFileName(new Date()), { type: 'application/pdf' });
+}
+
 
 function canShareFiles(files: File[]): boolean {
   if (typeof navigator.share !== 'function') {

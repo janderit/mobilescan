@@ -11,7 +11,8 @@
 
 import * as icons from './icons';
 import type { Capture } from './model';
-import { releaseCanvas, renderFrame } from './share';
+import { releaseCanvas } from './canvas';
+import { renderFrame } from './share';
 import {
   NEUTRAL_TONE,
   TONE_KEYS,

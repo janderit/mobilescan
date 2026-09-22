@@ -78,7 +78,7 @@ describe('pageLayout', () => {
 
 describe('buildPdf', () => {
   it('produces a one-page A4 portrait PDF with MobileScan metadata', async () => {
-    const bytes = await buildPdf(tinyJpeg(), 3000, 4000);
+    const bytes = await buildPdf([{ jpeg: tinyJpeg(), width: 3000, height: 4000 }]);
     expect(bytes.length).toBeGreaterThan(0);
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe('%PDF-');
 
@@ -94,11 +94,35 @@ describe('buildPdf', () => {
   });
 
   it('produces a landscape page for a landscape crop', async () => {
-    const bytes = await buildPdf(tinyJpeg(), 4000, 3000);
+    const bytes = await buildPdf([{ jpeg: tinyJpeg(), width: 4000, height: 3000 }]);
     const doc = await PDFDocument.load(bytes, { updateMetadata: false });
     const size = doc.getPage(0).getSize();
     expect(size.width).toBeCloseTo(A4.height, 2);
     expect(size.height).toBeCloseTo(A4.width, 2);
+  });
+});
+
+describe('buildPdf multi-page (v0.5)', () => {
+  it('adds one page per image in order, each with its own orientation', async () => {
+    const jpeg = tinyJpeg();
+    const bytes = await buildPdf([
+      { jpeg, width: 3000, height: 4000 },
+      { jpeg, width: 2000, height: 2800 },
+      { jpeg, width: 4000, height: 3000 },
+    ]);
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    expect(doc.getPageCount()).toBe(3);
+    const sizes = doc.getPages().map((page) => page.getSize());
+    expect(sizes[0]!.width).toBeCloseTo(A4.width, 2);
+    expect(sizes[0]!.height).toBeCloseTo(A4.height, 2);
+    expect(sizes[1]!.width).toBeCloseTo(A4.width, 2);
+    expect(sizes[1]!.height).toBeCloseTo(A4.height, 2);
+    expect(sizes[2]!.width).toBeCloseTo(A4.height, 2);
+    expect(sizes[2]!.height).toBeCloseTo(A4.width, 2);
+  });
+
+  it('rejects an empty page list', async () => {
+    await expect(buildPdf([])).rejects.toThrow('no pages');
   });
 });
 

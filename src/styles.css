@@ -282,9 +282,48 @@ button {
   background: var(--surface);
 }
 
+/* Page header: [previous] n/m [next], only with two or more pages (v0.5). */
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: calc(12px + var(--safe-top)) calc(16px + var(--safe-right)) 0 calc(16px + var(--safe-left));
+}
+
+.page-header[hidden] {
+  display: none;
+}
+
+/* The header takes the top safe area; the stage then only needs its own margin. */
+.page-header:not([hidden]) + .captured-stage {
+  padding-top: 12px;
+}
+
+.icon-button.page-arrow {
+  width: 44px;
+  height: 44px;
+}
+
+.icon-button.page-arrow svg {
+  width: 24px;
+  height: 24px;
+}
+
+.page-position {
+  min-width: 56px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .captured-stage {
   flex: 1;
   min-height: 0;
+  /* Horizontal swipes switch pages; leave vertical gestures to the browser. */
+  touch-action: pan-y;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -33,7 +33,7 @@ ICON = {
     "refresh": ("Retry", '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>'),
     "spinner": ("Busy indicator (rotates)", '<path d="M12 2a10 10 0 0 1 10 10" stroke-width="3"/>'),
     # v0.5
-    "plus": ("Add another page", '<path d="M12 5v14M5 12h14"/>'),
+    "add-page": ("Add another page", '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 11v6M9 14h6"/>'),
     "chevron-left": ("Previous page", '<path d="M15 18l-6-6 6-6"/>'),
     "chevron-right": ("Next page", '<path d="M9 18l6-6-6-6"/>'),
     # v0.7
@@ -260,7 +260,7 @@ def captured_v05(current=1, total=1):
                  + f'<text x="{W/2}" y="79" text-anchor="middle" font-size="20" font-weight="600" fill="#111827">{current}/{total}</text>'
                  + btn("chevron-right", 330, 72, r=22, color="#111827" if next_ok else "#d1d5db", size=24))
     body += (btn("arrow-left", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
-             + btn("edit", 243, BAR) + btn("plus", 338, BAR))
+             + btn("edit", 243, BAR) + btn("add-page", 338, BAR))
     return body
 
 # ---- v0.6 ------------------------------------------------------------------

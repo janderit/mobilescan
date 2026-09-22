@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast) and v0.4 (UI polish) are
-implemented. A second roadmap is defined but not yet implemented: v0.5 (multi-page PDFs),
-v0.6 (loupe previews while dragging), v0.7 (shear / perspective correction) and v0.8
-(auto-detect for frame and tone); see `intent/v0.5-multi-page.md` .. `intent/v0.8-auto-detect.md`
+v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast), v0.4 (UI polish) and
+v0.5 (multi-page PDFs) are implemented. The rest of the second roadmap is defined but not yet
+implemented: v0.6 (loupe previews while dragging), v0.7 (shear / perspective correction) and v0.8
+(auto-detect for frame and tone); see `intent/v0.6-loupes.md` .. `intent/v0.8-auto-detect.md`
 and the "v0.5 to v0.8 decisions" section of the decisions file. The repository contains the product spec (`README.md`),
 design intent documents with per-version definitions, icons and mockups (`intent/`), and the
 TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
@@ -73,8 +73,9 @@ The capture frame is the central concept:
 - **Brightness/contrast** uses one slider with a segmented toggle (brightness 0.5..1.5, contrast 0.5..2.0, colour temperature -1..1 as a red/blue channel gain of up to 20%, tick at neutral) plus a grayscale toggle button. The view shows the frame region only. The preview is the CSS filter chain `brightness(b) contrast(c) url(#temperature) grayscale(1)` on the display canvas (no pixel work while dragging; the temperature step is an inline SVG `feColorMatrix` in sRGB); on confirm the chain is baked into the whole captured image via the 2D context `filter` property when it consists of shorthand functions only, otherwise (non-neutral temperature, or no `filter` support) through the per-pixel lookup-table loop in `src/tone.ts`. Neutral values leave the image untouched; values reset to neutral on each visit and edits accumulate in the image.
 - **Share** opens a sheet with a three-level compression control (JPEG quality 0.5 / 0.75 / 0.92), then embeds the frame region on a fixed A4 page scaled to fit (orientation follows the crop; borders on one axis are accepted) and hands the PDF to the Web Share API. Success returns to the start page and discards the image; cancel keeps the captured view.
 - **Polish (v0.4).** Camera failures show an icon-only error screen (warning, retry, back) whose status label names the cause. Share and bake failures show the warning icon briefly over the current view and leave the image untouched. Every screen change pushes a history entry and `popstate` acts as the current screen's back button (`src/navigation.ts`), so hardware back never leaves the app mid-scan. Screens cross-fade in 150 ms, the popover scales in from the edit button, a white flash plus vibration confirms the shutter; all off under `prefers-reduced-motion`. Baking runs behind the busy overlay, deferred until the overlay has painted. Backgrounding the page stops the camera stream and returning restarts it. The manifest carries a maskable icon rendered by `scripts/render-icons.mjs`. The app shell lives in `src/app.ts` (`src/main.ts` only mounts it) so jsdom tests can drive it.
+- **Multi-page (v0.5).** The app holds a list of pages (`src/model.ts` `Page`, `src/pages.ts`) instead of one capture. [+] on the captured view parks the current page (full image as JPEG blob at quality 0.95, canvas released) and opens the camera; the new capture is appended and becomes current. Only the current page holds a full-resolution canvas; switching pages parks one and wakes the other behind the busy overlay. A page is re-encoded only if a bake changed it (`dirty`); cropping only updates the frame. With two or more pages a header [previous] "n/m" [next] sits above the image ("n/m" is the second text exception). Back with several pages removes the current page and shows the previous one (the next one if the first was removed); with one page it is the v0.4 retake. Camera back after [+] returns to the page shown before. Share encodes every page's frame region in order and builds one A4 page per scan (`buildPdf` takes a list). Soft limit 20 pages, [+] disabled at the limit. Page switches push no history entry.
 
-Screens: start → camera (or camera error) → captured image [back] [share] [edit] → edit popover (crop/rotate, brightness/contrast).
+Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → edit popover (crop/rotate, brightness/contrast).
 Crop/rotate view: [back] [crop|rotate] [rotate 90 right] [confirm]. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [confirm].
 
 ## Version roadmap

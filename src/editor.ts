@@ -30,7 +30,7 @@ import {
   type Handle,
   type Point,
 } from './geometry';
-import { releaseCanvas } from './share';
+import { releaseCanvas } from './canvas';
 import { iconButton, segmentButton } from './ui';
 
 export type EditMode = 'crop' | 'rotate';

@@ -5,7 +5,7 @@
 
 import type { Capture, Frame } from './model';
 import { bakeLayout } from './geometry';
-import { releaseCanvas } from './share';
+import { releaseCanvas } from './canvas';
 import {
   applyTonePixels,
   isNeutralTone,

@@ -1,5 +1,6 @@
 /**
- * Single-page A4 PDF from one JPEG (see intent/v0.1-mvp.md "PDF").
+ * A4 PDF from one JPEG per page (see intent/v0.1-mvp.md "PDF" and
+ * intent/v0.5-multi-page.md "Share").
  * No DOM access: takes the encoded JPEG bytes and returns the PDF bytes.
  */
 
@@ -14,6 +15,13 @@ export interface PageLayout {
   pageHeight: number;
   x: number;
   y: number;
+  width: number;
+  height: number;
+}
+
+/** One encoded scan page: JPEG bytes and their pixel size. */
+export interface PdfImage {
+  jpeg: Uint8Array;
   width: number;
   height: number;
 }
@@ -40,26 +48,27 @@ export function pageLayout(imageWidth: number, imageHeight: number): PageLayout 
   };
 }
 
-/** Build the one-page PDF embedding the given JPEG. */
-export async function buildPdf(
-  jpeg: Uint8Array,
-  imageWidth: number,
-  imageHeight: number,
-): Promise<Uint8Array<ArrayBuffer>> {
+/** Builds the PDF with one A4 page per image, in the given order. */
+export async function buildPdf(images: readonly PdfImage[]): Promise<Uint8Array<ArrayBuffer>> {
+  if (images.length === 0) {
+    throw new Error('no pages');
+  }
   const doc = await PDFDocument.create();
   doc.setTitle('MobileScan');
   doc.setProducer('MobileScan');
   doc.setCreator('MobileScan');
 
-  const image = await doc.embedJpg(jpeg);
-  const layout = pageLayout(imageWidth, imageHeight);
-  const page = doc.addPage([layout.pageWidth, layout.pageHeight]);
-  page.drawImage(image, {
-    x: layout.x,
-    y: layout.y,
-    width: layout.width,
-    height: layout.height,
-  });
+  for (const { jpeg, width, height } of images) {
+    const image = await doc.embedJpg(jpeg);
+    const layout = pageLayout(width, height);
+    const page = doc.addPage([layout.pageWidth, layout.pageHeight]);
+    page.drawImage(image, {
+      x: layout.x,
+      y: layout.y,
+      width: layout.width,
+      height: layout.height,
+    });
+  }
 
   // pdf-lib allocates a plain ArrayBuffer; narrowing the buffer type lets callers
   // hand the bytes straight to Blob/File without a copy.
