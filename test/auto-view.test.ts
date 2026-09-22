@@ -15,7 +15,7 @@ import * as detect from '../src/detect';
  */
 vi.mock('../src/detect', async (importOriginal) => {
   const original = await importOriginal<typeof import('../src/detect')>();
-  return { ...original, detectFrame: vi.fn(original.detectFrame), detectTone: vi.fn(original.detectTone) };
+  return { ...original, detectFrameIn: vi.fn(original.detectFrameIn), detectTone: vi.fn(original.detectTone) };
 });
 
 const real = await vi.importActual<typeof import('../src/detect')>('../src/detect');
@@ -63,8 +63,8 @@ describe('auto-detect in the crop/rotate view', () => {
     view.close();
     view.element.remove();
     stub.restore();
-    vi.mocked(detect.detectFrame).mockReset();
-    vi.mocked(detect.detectFrame).mockImplementation(real.detectFrame);
+    vi.mocked(detect.detectFrameIn).mockReset();
+    vi.mocked(detect.detectFrameIn).mockImplementation(real.detectFrameIn);
   });
 
   it('has the wand button between rotate 90 and confirm', () => {
@@ -98,7 +98,7 @@ describe('auto-detect in the crop/rotate view', () => {
         { x: -12, y: 0 },
       ],
     };
-    vi.mocked(detect.detectFrame).mockReturnValueOnce(detected);
+    vi.mocked(detect.detectFrameIn).mockReturnValueOnce(detected);
     view.open(c);
     button(view.element, 'Automatisch erkennen').click();
     expect(notices).toBe(0);
@@ -121,11 +121,13 @@ describe('auto-detect in the crop/rotate view', () => {
     const c = capture();
     view.open(c);
     button(view.element, 'Automatisch erkennen').click();
-    const call = vi.mocked(detect.detectFrame).mock.calls[0]!;
-    const layout = call[1];
+    const call = vi.mocked(detect.detectFrameIn).mock.calls[0]!;
+    expect(call[0]).toBe(c.image);
+    expect(call[1]).toEqual(c.frame);
+    expect(call[2]).toBe(W);
+    // The working layout is derived from that frame: longer side at the detection size.
+    const layout = detect.frameWorkingLayout(call[1]);
     expect(Math.max(layout.frame.width, layout.frame.height)).toBeCloseTo(detect.DETECT_LONG_SIDE, 6);
-    expect(call[2]).toEqual(c.frame);
-    expect(call[3]).toBe(W);
   });
 });
 
