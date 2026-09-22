@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 914" width="390" height="914" font-family="-apple-system, Helvetica, Arial, sans-serif">
+  <title>v0.1 Start page</title>
+  <rect x="0" y="0" width="390" height="844" rx="40" fill="#ffffff" stroke="#111827" stroke-width="3"/>
+  <rect x="130" y="14" width="130" height="30" rx="15" fill="#111827"/>
+  <clipPath id="screen"><rect x="2" y="2" width="386" height="840" rx="38"/></clipPath>
+  <g clip-path="url(#screen)">
+  <text x="195.0" y="300" text-anchor="middle" font-size="34" font-weight="700" fill="#111827">MobileScan</text><rect x="55" y="380" width="280" height="64" rx="32" fill="#1e40af"/><text x="195.0" y="422" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">Dokument scannen</text>
+  </g>
+  <rect x="140" y="828" width="110" height="5" rx="2.5" fill="#111827"/>
+  <text x="195.0" y="884" text-anchor="middle" font-size="15" fill="#374151">Start: the only text in the app.</text>
+</svg>
