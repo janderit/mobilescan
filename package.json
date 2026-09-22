@@ -7,9 +7,10 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "vite --host",
-    "build": "npm run icons && tsc --noEmit && vite build",
+    "build": "npm run icons && npm run site && tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "icons": "node scripts/render-icons.mjs",
+    "site": "node scripts/render-site.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -16,7 +16,12 @@ TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
   (`@vitejs/plugin-basic-ssl`), so a phone on the same LAN can open it and grant camera access.
   Accept the self-signed certificate warning on the phone once.
 - `npm run build`: renders the app icons from `intent/icons/app-icon.svg` (`npm run icons`),
-  type-checks (`tsc --noEmit`), then builds the static site into `dist/`.
+  renders the product page (`npm run site`), type-checks (`tsc --noEmit`), then builds the static
+  site into `dist/`.
+- `npm run site`: renders `site/index.template.html` to the git-ignored `site/index.html`
+  (`scripts/render-site.mjs`), filling the `{{IMPRINT_*}}` placeholders of the Impressum from the
+  `IMPRINT_*` variables in `.env`. Contact data must never be committed; edit the template, not
+  the output. Without a `.env` the placeholders from `.env.example` are used.
 - `npm test`: runs the Vitest suite (`test/**/*.test.ts`).
 - `npm run lint`: runs ESLint.
 - `npm run deploy`: builds, then runs `scripts/deploy.sh`, which copies `dist/` to
@@ -28,9 +33,10 @@ TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
   Bump `version` in `package.json` when releasing.
 
 Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
-(`render-icons.mjs`, `deploy.sh`), `public/` static files served as-is under `/app/`, including
-`.htaccess` for the Apache MIME types and cache headers uberspace needs, `site/` the static
-product page deployed to the site root.
+(`render-icons.mjs`, `render-site.mjs`, `deploy.sh`), `public/` static files served as-is under
+`/app/`, including `.htaccess` for the Apache MIME types and cache headers uberspace needs, `site/`
+the bilingual (DE/EN) product page with Impressum and Datenschutzhinweis, deployed to the site root
+(template in the repo, rendered file git-ignored).
 
 Read in this order before implementing anything:
 

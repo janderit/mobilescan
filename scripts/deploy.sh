@@ -1,7 +1,8 @@
 #!/bin/sh
 # Deploys to the uberspace host via rsync/scp:
 #   dist/            -> $DEPLOY_PATH/app/      (the PWA, served at /app/)
-#   site/index.html  -> $DEPLOY_PATH/index.html (the product page at the site root)
+#   site/index.html  -> $DEPLOY_PATH/index.html (the product page at the site root,
+#                       rendered from site/index.template.html by scripts/render-site.mjs)
 # Reads DEPLOY_HOST and DEPLOY_PATH from a git-ignored .env in the repo root.
 # Run via `npm run deploy` (which builds first) or directly once dist/ exists.
 set -eu
@@ -36,7 +37,7 @@ if [ ! -f "$dist_dir/.htaccess" ]; then
 fi
 
 if [ ! -f "$site_dir/index.html" ]; then
-    echo "deploy.sh: $site_dir/index.html not found." >&2
+    echo "deploy.sh: $site_dir/index.html not found. Run 'npm run site' (or 'npm run build') first." >&2
     exit 1
 fi
 

@@ -5,3 +5,5 @@ dist/
 .DS_Store
 # generated at build time from intent/icons/app-icon.svg
 public/icons/
+# generated at build time from site/index.template.html and .env
+site/index.html
