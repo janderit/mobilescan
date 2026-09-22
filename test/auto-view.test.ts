@@ -153,7 +153,6 @@ describe('auto-detect in the brightness/contrast view', () => {
           notices += 1;
         },
       },
-      2048,
     );
     document.body.append(view.element);
   });
@@ -218,7 +217,7 @@ describe('auto-detect in the brightness/contrast view', () => {
   it('back after auto discards the values', () => {
     vi.mocked(detect.detectTone).mockReturnValue({ brightness: 1.1, contrast: 3, temperature: 0, grayscale: true });
     let cancelled = 0;
-    const v = new ToneView({ onCancel: () => { cancelled += 1; }, onConfirm: () => {}, onNotice: () => {} }, 2048);
+    const v = new ToneView({ onCancel: () => { cancelled += 1; }, onConfirm: () => {}, onNotice: () => {} });
     document.body.append(v.element);
     v.open(capture());
     button(v.element, 'Automatisch anpassen').click();

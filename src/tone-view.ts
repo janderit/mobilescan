@@ -14,13 +14,17 @@
  * Auto (v0.8): the wand button measures the paper background and the print
  * in the frame region (`detect.ts`) and sets grayscale, brightness and
  * contrast so the page becomes black on white, as a pending edit.
+ *
+ * Zoom (v0.9): the stage is a `FrameStage`, so the frame region can be
+ * pinched, panned and double-tapped; the filter chain applies to the stage
+ * canvas as before. The zoom resets whenever the view opens.
  */
 
 import * as icons from './icons';
 import type { Capture } from './model';
-import { releaseCanvas, sampleImage } from './canvas';
+import { sampleImage } from './canvas';
 import { detectTone, toneWorkingLayout } from './detect';
-import { renderFrame } from './share';
+import { FrameStage } from './frame-stage';
 import {
   NEUTRAL_TONE,
   TONE_KEYS,
@@ -34,6 +38,7 @@ import {
   type ToneKey,
 } from './tone';
 import { iconButton, segmentButton } from './ui';
+import type { ZoomState } from './zoom';
 
 export interface ToneViewCallbacks {
   /** Back: discard the pending values. */
@@ -64,6 +69,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 export class ToneView {
   readonly element: HTMLElement;
 
+  private readonly stage: FrameStage;
   private readonly canvas: HTMLCanvasElement;
   private readonly slider: HTMLInputElement;
   private readonly sliderWrap: HTMLElement;
@@ -76,15 +82,9 @@ export class ToneView {
   private key: ToneKey = 'brightness';
   private open_ = false;
 
-  constructor(
-    private readonly callbacks: ToneViewCallbacks,
-    private readonly previewMaxLongSide: number,
-  ) {
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'captured-canvas tone-canvas';
-    const stage = document.createElement('div');
-    stage.className = 'captured-stage';
-    stage.append(this.canvas);
+  constructor(private readonly callbacks: ToneViewCallbacks) {
+    this.stage = new FrameStage('captured-canvas tone-canvas');
+    this.canvas = this.stage.canvas;
 
     // Hidden SVG holding the temperature colour matrix for the preview filter.
     const defs = document.createElementNS(SVG_NS, 'svg');
@@ -139,22 +139,18 @@ export class ToneView {
 
     this.element = document.createElement('section');
     this.element.className = 'screen screen-tone';
-    this.element.append(defs, stage, this.sliderWrap, bar);
+    this.element.append(defs, this.stage.element, this.sliderWrap, bar);
     this.element.hidden = true;
   }
 
-  /** Shows the frame region of the capture with neutral values, brightness selected. */
+  /** Shows the frame region of the capture with neutral values, brightness selected, fitted view. */
   open(capture: Capture): void {
     this.capture = capture;
     this.tone = { ...NEUTRAL_TONE };
     this.key = 'brightness';
     this.open_ = true;
-    const source = renderFrame(capture, this.previewMaxLongSide);
-    this.canvas.width = source.width;
-    this.canvas.height = source.height;
-    this.canvas.getContext('2d')?.drawImage(source, 0, 0);
-    releaseCanvas(source);
     this.element.hidden = false;
+    this.stage.show(capture);
     this.renderKey();
   }
 
@@ -164,7 +160,12 @@ export class ToneView {
     this.capture = null;
     this.element.hidden = true;
     this.canvas.style.filter = '';
-    releaseCanvas(this.canvas);
+    this.stage.clear();
+  }
+
+  /** The zoom state of the stage, for tests. */
+  get zoom(): ZoomState {
+    return this.stage.zoom;
   }
 
   // ---- controls --------------------------------------------------------

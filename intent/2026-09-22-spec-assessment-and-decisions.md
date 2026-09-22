@@ -90,7 +90,7 @@ purpose, limited to the image (`v0.9-zoom.md`).
 | What zooms | Only the stage content. Bars, header and slider stay in place and keep their size; browser page zoom stays disabled. |
 | Zoom is view state | `ZoomState` (scale, translation) composed on top of the fitted view transform, never stored on the page, never baked or shared; reset on back, confirm, 90°, page switch and bakes. |
 | Range | 1 up to the lesser of 8 and 2 device pixels per image pixel (the loupe cap). No rubber band below 1. Content must cover the stage on each axis, else centred. |
-| One finger while zoomed | Pans in the captured and brightness/contrast views; in the crop/rotate view one finger stays reserved for handles, so panning there needs two fingers. Page swipe only in the fitted view. |
+| One finger while zoomed | Pans in the captured and brightness/contrast views. In the crop/rotate view the handles keep priority: in crop mode a finger clear of every handle's 44 px target pans, a finger on a handle drags it; in rotate mode one finger always rotates, so panning there needs two fingers. (Revised after the second device test: the first version reserved one finger entirely for handles, which made panning in the crop view clumsy.) Page swipe only in the fitted view. |
 | Second finger during a drag | Cancels the one-finger drag and its loupes; the pending frame keeps its current position. |
 | Double tap | Toggles fitted and 3x at the tap point. No reset button, no zoom indicator. |
 | Rendering | CSS transform on a wrapper during the gesture (no drawing per move), crisp redraw of the visible part from the full-resolution image on release; stage canvas keeps its size, so memory does not grow with zoom. Crop/rotate overlay is recomputed per move so handles keep their size. |

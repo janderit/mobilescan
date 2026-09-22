@@ -3,6 +3,8 @@
  * (share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
  * One in-memory state machine, plain DOM, no persistence. A scan is a list of
  * pages of which only the current one holds a full-resolution canvas (v0.5).
+ * The captured view shows the current page on a zoomable `FrameStage` (v0.9);
+ * the zoom is view state only and resets whenever the view is entered.
  */
 
 import * as icons from './icons';
@@ -19,9 +21,8 @@ import {
   type CameraErrorKind,
   type CameraSession,
 } from './camera';
-import { buildPdfFile, renderFrame, sharePdf } from './share';
+import { buildPdfFile, sharePdf } from './share';
 import type { UpdateChecker } from './update';
-import { releaseCanvas } from './canvas';
 import { applyCapture, asCapture, newPage, parkPage, releasePage, wakePage } from './pages';
 import { CropRotateView } from './editor';
 import { ToneView } from './tone-view';
@@ -29,6 +30,8 @@ import { isNeutralTone, type Tone } from './tone';
 import { bakeFrame, bakeTone, frameNeedsBake } from './bake';
 import { BackTrap } from './navigation';
 import { swipeDirection } from './swipe';
+import { FrameStage } from './frame-stage';
+import type { ZoomState } from './zoom';
 
 export type Screen = 'start' | 'camera' | 'error' | 'captured' | 'edit' | 'tone';
 
@@ -44,9 +47,6 @@ interface State {
   cameraError: CameraErrorKind;
   cameraOrigin: CameraOrigin;
 }
-
-/** Long side of the on-screen preview canvas; the PDF uses the full frame. */
-const PREVIEW_MAX_LONG_SIDE = 2048;
 
 /** Cross-fade between screens; must match `--fade` in styles.css. */
 export const FADE_MS = 150;
@@ -142,7 +142,7 @@ export class App {
   private readonly errorStatus: HTMLElement;
 
   // Captured
-  private readonly previewCanvas: HTMLCanvasElement;
+  private readonly capturedStage: FrameStage;
   private readonly menuBackdrop: HTMLElement;
   private readonly editButton: HTMLButtonElement;
   private readonly addButton: HTMLButtonElement;
@@ -237,9 +237,16 @@ export class App {
     retryButton.addEventListener('click', () => void this.openCamera());
     const errorScreen = el('section', 'screen screen-error', errorBack, this.errorStatus, retryButton);
 
-    // Captured
-    this.previewCanvas = document.createElement('canvas');
-    this.previewCanvas.className = 'captured-canvas';
+    // Captured: the frame region on a zoomable stage. In the fitted view a
+    // one-finger swipe over the image moves between pages like the arrows;
+    // zoomed in, one finger pans instead.
+    this.capturedStage = new FrameStage('captured-canvas', {
+      onPointerDown: (event) => this.onSwipeStart(event),
+      onPointerEnd: (event) => this.onSwipeEnd(event),
+      onGestureStart: () => {
+        this.swipeStart = null;
+      },
+    });
     const capturedBack = iconButton(icons.arrowLeft, 'Zurück');
     capturedBack.addEventListener('click', () => void this.backFromCaptured());
     const shareButton = iconButton(icons.share, 'Teilen', 'primary');
@@ -311,19 +318,11 @@ export class App {
       if (event.target === this.sheetBackdrop) this.closeSheet();
     });
 
-    // Swiping over the image moves between pages like the arrows.
-    const capturedStage = el('div', 'captured-stage', this.previewCanvas);
-    capturedStage.addEventListener('pointerdown', (event) => this.onSwipeStart(event));
-    capturedStage.addEventListener('pointerup', (event) => this.onSwipeEnd(event));
-    capturedStage.addEventListener('pointercancel', () => {
-      this.swipeStart = null;
-    });
-
     const capturedScreen = el(
       'section',
       'screen screen-captured',
       this.pageHeader,
-      capturedStage,
+      this.capturedStage.element,
       el('div', 'button-bar', capturedBack, shareButton, this.editButton, this.addButton),
       this.menuBackdrop,
       this.sheetBackdrop,
@@ -337,14 +336,11 @@ export class App {
     });
 
     // Brightness/contrast
-    this.toneView = new ToneView(
-      {
-        onCancel: () => void this.closeToneView(null),
-        onConfirm: (tone) => void this.closeToneView(tone),
-        onNotice: () => this.showNotice(),
-      },
-      PREVIEW_MAX_LONG_SIDE,
-    );
+    this.toneView = new ToneView({
+      onCancel: () => void this.closeToneView(null),
+      onConfirm: (tone) => void this.closeToneView(tone),
+      onNotice: () => this.showNotice(),
+    });
 
     // Busy
     this.busyOverlay = el('div', 'busy');
@@ -436,6 +432,11 @@ export class App {
     return this.pages;
   }
 
+  /** Zoom state of the captured view, for tests. */
+  get capturedZoom(): ZoomState {
+    return this.capturedStage.zoom;
+  }
+
   /** Releases resources and detaches global listeners (tests). */
   dispose(): void {
     this.discardEverything();
@@ -466,6 +467,7 @@ export class App {
     }
     this.renderPageHeader();
     if (screen === 'camera') this.layoutFrame();
+    if (screen === 'captured') this.capturedStage.layout();
     this.backTrap.setActive(screen !== 'start');
   }
 
@@ -482,6 +484,8 @@ export class App {
       this.leaveTimers.delete(to);
     }
     toEl.hidden = false;
+    // Entering the captured view always starts from the fitted view (v0.9).
+    if (to === 'captured') this.capturedStage.resetZoom();
     toEl.classList.remove('leaving');
     toEl.classList.add('entering');
     fromEl.classList.remove('entering');
@@ -542,17 +546,14 @@ export class App {
     return page?.image ? asCapture(page) : null;
   }
 
+  /** Shows the current page's frame region on the captured stage, fitted (the zoom resets). */
   private renderPreview(): void {
     const capture = this.currentCapture();
     if (!capture) {
-      releaseCanvas(this.previewCanvas);
+      this.capturedStage.clear();
       return;
     }
-    const source = renderFrame(capture, PREVIEW_MAX_LONG_SIDE);
-    this.previewCanvas.width = source.width;
-    this.previewCanvas.height = source.height;
-    this.previewCanvas.getContext('2d')?.drawImage(source, 0, 0);
-    releaseCanvas(source);
+    this.capturedStage.show(capture);
   }
 
   /** Shows the warning icon briefly over the current view. */
@@ -769,7 +770,7 @@ export class App {
     }
     const [removed] = this.pages.splice(this.current, 1);
     if (removed) releasePage(removed);
-    releaseCanvas(this.previewCanvas);
+    this.capturedStage.clear();
     // The previous page, or the next one if the first page was removed.
     await this.switchToPage(Math.max(0, this.current - 1));
   }
@@ -783,7 +784,7 @@ export class App {
     this.state.sheetOpen = false;
     await this.runBusyAsync(() => parkPage(page), 'Seite konnte nicht abgelegt werden');
     if (page.image) return; // parking failed; stay on the page
-    releaseCanvas(this.previewCanvas);
+    this.capturedStage.clear();
     await this.openCamera('captured');
   }
 
@@ -986,7 +987,7 @@ export class App {
     for (const page of this.pages) releasePage(page);
     this.pages.length = 0;
     this.current = 0;
-    releaseCanvas(this.previewCanvas);
+    this.capturedStage.clear();
   }
 
   private discardEverything(): void {
