@@ -20,6 +20,7 @@ import {
   type CameraSession,
 } from './camera';
 import { buildPdfFile, renderFrame, sharePdf } from './share';
+import type { UpdateChecker } from './update';
 import { releaseCanvas } from './canvas';
 import { applyCapture, asCapture, newPage, parkPage, releasePage, wakePage } from './pages';
 import { CropRotateView } from './editor';
@@ -99,7 +100,12 @@ export interface AppOptions {
   /** Build label shown on the start page. */
   version: string;
   build: string;
+  /** Update check for the start page; omitted in tests that do not care. */
+  updates?: UpdateChecker;
 }
+
+/** Minimum time between two update checks, so returning to the start page repeatedly stays cheap. */
+const UPDATE_CHECK_INTERVAL_MS = 60_000;
 
 export class App {
   private readonly state: State = {
@@ -165,14 +171,28 @@ export class App {
   // Navigation
   private readonly backTrap: BackTrap;
 
+  // Updates
+  private readonly updates: UpdateChecker | null;
+  private readonly updateButton: HTMLButtonElement;
+  private updateAvailable = false;
+  private updateChecking = false;
+  private lastUpdateCheck = Number.NEGATIVE_INFINITY;
+
   /** Detaches the window/document listeners on dispose(). */
   private readonly listeners = new AbortController();
 
   constructor(root: HTMLElement, options: AppOptions) {
+    this.updates = options.updates ?? null;
+
     // Start
     const startButton = el('button', 'start-button', 'Dokument scannen');
     startButton.type = 'button';
     startButton.addEventListener('click', () => void this.openCamera());
+    // Update button: shown only when the server has a newer build. The slot
+    // keeps its height so the layout does not jump when the button appears.
+    this.updateButton = iconButton(icons.refresh, 'App aktualisieren', 'primary update-button');
+    this.updateButton.hidden = true;
+    this.updateButton.addEventListener('click', () => void this.applyUpdate());
     // Version line: makes it visible on the phone whether a new build has arrived.
     const version = el('p', 'app-version', `v${options.version} (${options.build})`);
     const startScreen = el(
@@ -180,6 +200,7 @@ export class App {
       'screen screen-start',
       el('h1', 'app-title', 'MobileScan'),
       startButton,
+      el('div', 'update-slot', this.updateButton),
       version,
     );
 
@@ -385,6 +406,7 @@ export class App {
     window.addEventListener('popstate', () => this.backTrap.handlePop(), { signal });
 
     this.render();
+    this.checkForUpdate();
   }
 
   /** Current screen, for tests. */
@@ -428,7 +450,9 @@ export class App {
     if (screen !== this.shownScreen) {
       this.switchScreen(this.shownScreen, screen);
       this.shownScreen = screen;
+      if (screen === 'start') this.checkForUpdate();
     }
+    this.updateButton.hidden = !this.updateAvailable;
     this.sheetBackdrop.hidden = !(screen === 'captured' && sheetOpen);
     this.menuBackdrop.hidden = !(screen === 'captured' && menuOpen);
     this.editButton.setAttribute('aria-expanded', String(menuOpen));
@@ -576,11 +600,55 @@ export class App {
   }
 
   private onVisibilityChange(): void {
+    if (document.visibilityState === 'visible' && this.state.screen === 'start') {
+      this.checkForUpdate();
+    }
     if (this.state.screen !== 'camera') return;
     if (document.visibilityState === 'hidden') {
       this.stopSession();
     } else if (!this.session) {
       void this.openCamera();
+    }
+  }
+
+  // ---- updates ---------------------------------------------------------
+
+  /**
+   * Asks the server for a newer build, at most once a minute and only while
+   * online (the checker treats offline and failures as "no update"). Once an
+   * update is known, the button stays until it is applied.
+   */
+  private checkForUpdate(): void {
+    if (!this.updates || this.updateAvailable || this.updateChecking) return;
+    const now = Date.now();
+    if (now - this.lastUpdateCheck < UPDATE_CHECK_INTERVAL_MS) return;
+    this.lastUpdateCheck = now;
+    this.updateChecking = true;
+    this.updates.check().then(
+      (available) => {
+        this.updateChecking = false;
+        if (!available) return;
+        this.updateAvailable = true;
+        this.render();
+      },
+      () => {
+        this.updateChecking = false;
+      },
+    );
+  }
+
+  /** Activates the new build behind the busy overlay; the page reloads on success. */
+  private async applyUpdate(): Promise<void> {
+    if (!this.updates || this.state.busy) return;
+    this.state.busy = true;
+    this.render();
+    try {
+      await this.updates.apply();
+    } catch (error) {
+      console.error(error);
+      this.state.busy = false;
+      this.render();
+      this.showNotice();
     }
   }
 

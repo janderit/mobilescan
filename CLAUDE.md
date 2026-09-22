@@ -34,6 +34,15 @@ TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 - The start page shows `v<package.json version> (<git short hash>)`, injected at build time via
   `define` in `vite.config.ts`, so it is visible on the phone whether an update has arrived.
   Bump `version` in `package.json` when releasing.
+- Updates: the build also writes `dist/version.json` (`{ version, build }`, plugin `versionFile`
+  in `vite.config.ts`). It is excluded from the service worker precache and served `no-cache`
+  (`public/.htaccess`). `src/update.ts` fetches it with `cache: 'no-store'` whenever the start
+  page is shown or becomes visible (at most once a minute, never while `navigator.onLine` is
+  false; any failure counts as "no update"). A differing build shows the icon-only update button
+  under the start button; tapping it runs `registration.update()`, posts `SKIP_WAITING` to the
+  new worker once installed, and reloads on `controllerchange` (plain reload after 15 s as a
+  fallback). The service worker uses `registerType: 'prompt'`, so a new worker waits instead of
+  taking over a running scan; closing the app also lets it activate.
 
 Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
 (`render-icons.mjs`, `render-site.mjs`, `deploy.sh`), `public/` static files served as-is under

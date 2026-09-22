@@ -165,6 +165,13 @@ button {
   font-weight: 600;
 }
 
+.update-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+}
+
 .app-version {
   position: absolute;
   bottom: calc(var(--safe-bottom) + 12px);

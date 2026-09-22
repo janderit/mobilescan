@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -19,12 +19,33 @@ function gitShortHash(): string {
   }
 }
 
+/**
+ * Writes `version.json` (`{ version, build }`) into dist/. The app fetches it
+ * to detect a newer deployment (src/update.ts). It is excluded from the service
+ * worker precache and served with `Cache-Control: no-cache` (public/.htaccess).
+ */
+function versionFile(build: string): Plugin {
+  return {
+    name: 'mobilescan-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ version: pkg.version, build }),
+      });
+    },
+  };
+}
+
+const build = gitShortHash();
+
 export default defineConfig(({ mode }) => ({
   // The app lives under /app/ so the site root stays free for the product page.
   base: '/app/',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
-    __APP_BUILD__: JSON.stringify(gitShortHash()),
+    __APP_BUILD__: JSON.stringify(build),
   },
   server: {
     host: true,
@@ -37,8 +58,12 @@ export default defineConfig(({ mode }) => ({
     // grant camera access (getUserMedia requires a secure context). The
     // self-signed cert must be accepted once on the phone.
     ...(mode === 'development' ? [basicSsl()] : []),
+    versionFile(build),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a new service worker waits instead of taking over a running
+      // session; the start page's update button (src/update.ts) tells it to
+      // skip waiting and reloads. Closing the app also lets it activate.
+      registerType: 'prompt',
       injectRegister: 'auto',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'],
       devOptions: {
@@ -81,6 +106,8 @@ export default defineConfig(({ mode }) => ({
         // Precache the app shell only. No runtime caching: scans and other
         // in-memory data must never be persisted (see CLAUDE.md "No retention").
         globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
+        // version.json must always come from the network (see versionFile).
+        globIgnores: ['**/node_modules/**/*', 'version.json'],
         navigateFallback: '/app/index.html',
       },
     }),

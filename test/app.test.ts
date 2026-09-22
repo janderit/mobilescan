@@ -142,3 +142,73 @@ describe('App', () => {
     vi.useRealTimers();
   });
 });
+
+describe('App updates', () => {
+  let root: HTMLElement;
+  let app: App | null = null;
+
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    root = document.createElement('div');
+    document.body.append(root);
+  });
+
+  afterEach(() => {
+    app?.dispose();
+    app = null;
+    root.remove();
+    vi.clearAllMocks();
+  });
+
+  it('shows the update button on the start page once a newer build is reported', async () => {
+    const updates = { check: vi.fn(() => Promise.resolve(true)), apply: vi.fn(() => new Promise<void>(() => {})) };
+    app = new App(root, { version: '0', build: 'test', updates });
+    const updateButton = button(root, 'App aktualisieren');
+    expect(updateButton.hidden).toBe(true);
+    await flush();
+    expect(updates.check).toHaveBeenCalledOnce();
+    expect(updateButton.hidden).toBe(false);
+
+    updateButton.click();
+    await flush();
+    expect(updates.apply).toHaveBeenCalledOnce();
+    expect(root.querySelector<HTMLElement>('.busy')?.hidden).toBe(false);
+  });
+
+  it('keeps the button hidden without an update and without a checker', async () => {
+    const updates = { check: vi.fn(() => Promise.resolve(false)), apply: vi.fn(() => Promise.resolve()) };
+    app = new App(root, { version: '0', build: 'test', updates });
+    await flush();
+    expect(button(root, 'App aktualisieren').hidden).toBe(true);
+    app.dispose();
+    app = new App(root, { version: '0', build: 'test' });
+    expect(button(root, 'App aktualisieren').hidden).toBe(true);
+  });
+
+  it('checks again when the start page becomes visible after an interval', async () => {
+    vi.useFakeTimers();
+    try {
+      const updates = { check: vi.fn(() => Promise.resolve(false)), apply: vi.fn(() => Promise.resolve()) };
+      app = new App(root, { version: '0', build: 'test', updates });
+      await vi.runAllTimersAsync();
+      expect(updates.check).toHaveBeenCalledTimes(1);
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(updates.check).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(61_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(updates.check).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hides the busy overlay and shows the warning when applying fails', async () => {
+    const updates = { check: vi.fn(() => Promise.resolve(true)), apply: vi.fn(() => Promise.reject(new Error('x'))) };
+    app = new App(root, { version: '0', build: 'test', updates });
+    await flush();
+    button(root, 'App aktualisieren').click();
+    await flush();
+    expect(root.querySelector<HTMLElement>('.busy')?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>('.notice')?.hidden).toBe(false);
+  });
+});

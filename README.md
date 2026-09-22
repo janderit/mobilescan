@@ -32,6 +32,8 @@ Being a PWA, the mobilescan app is readily available.
 Upon visiting the hosting website https://mobilescan.app
 the browser prompts to install the progressive web application.
 
+When the app is online and the website carries a newer build, the start page also shows an update button (refresh icon) below the start button; tapping it installs the update and reloads the app. Offline, the button never appears.
+
 The start page shows a "Dokument scannen" button, which enables the camera with a dashed frame in DIN A* format superimposed on the live image (portrait orientation).
 The frame shall be about 90% of the total image size, to allow for later rotation/correction.
 
