@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 v0.1 (capture + share), v0.2 (crop/rotate), v0.3 (brightness/contrast), v0.4 (UI polish),
 v0.5 (multi-page PDFs), v0.6 (loupe previews while dragging), v0.7 (shear / perspective
 correction), v0.8 (auto-detect for frame and tone) and v0.9 (pinch zoom on the image in the
-captured and edit views) are implemented. The repository contains the product spec (`README.md`),
+captured and edit views) are implemented. v0.10 (live document detection in the camera view
+with auto-bake on capture) is defined in `intent/v0.10-live-detect.md` and the "v0.10 decisions"
+section but not yet implemented. The repository contains the product spec (`README.md`),
 design intent documents with per-version definitions, icons and mockups (`intent/`), and the
 TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -55,7 +57,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.9-zoom.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.10-live-detect.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -96,5 +98,5 @@ Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm],
 ## Version roadmap
 
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
-v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom.
-Each version is independently deployable. Do not pull features from a later version into an earlier one.
+v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom →
+v0.10 live detect. Each version is independently deployable. Do not pull features from a later version into an earlier one.

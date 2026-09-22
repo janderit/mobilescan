@@ -399,6 +399,18 @@ def zoomed():
              + btn("edit", 243, BAR) + btn("add-page", 338, BAR))
     return body
 
+def live_detect():
+    """Camera view with a page at an angle: green outline on the paper, wand toggle right of the shutter."""
+    pts = [(88, 175), (302, 190), (318, 520), (72, 508)]
+    body = (f'<rect x="0" y="0" width="{W}" height="{H}" fill="#374151"/>'
+            + paper_quad(pts, bg="#fdfdf7")
+            + f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.15"/>'
+            + quad_frame(pts, color="#22c55e", handles=False)
+            + btn("shutter", W/2, 760, r=40, fill="#ffffff", stroke="#9ca3af", color="#1e40af", size=52)
+            + btn("magic-wand", W/2 + 110, 760, r=28, fill="#ffffff", stroke="#ffffff", color="#111827", size=26)
+            + btn("arrow-left", 48, 90, r=24, fill="#111827", stroke="#111827", color="#ffffff", size=24))
+    return body
+
 SCREENS = [
     ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app."),
     ("v0.1-02-camera", "v0.1 Camera with DIN frame", camera(), "#374151", "Camera: dashed DIN A frame at 90 % width, shutter below."),
@@ -423,6 +435,7 @@ SCREENS = [
     ("v0.8-01-auto-crop", "v0.8 Auto-detected frame", auto_crop(), "#ffffff", "After [auto]: frame on the paper edges, wand left of confirm."),
     ("v0.8-02-auto-tone", "v0.8 Auto black-and-white", auto_tone(), "#ffffff", "After [auto]: grayscale on, contrast raised, wand in the bar."),
     ("v0.9-01-zoom", "v0.9 Pinch zoom on the captured view", zoomed(), "#ffffff", "Pinch: the image zooms inside the stage, the bar stays put."),
+    ("v0.10-01-live-detect", "v0.10 Live document detection", live_detect(), "#374151", "Document found: green outline on the page, wand toggle on."),
 ]
 
 def main():

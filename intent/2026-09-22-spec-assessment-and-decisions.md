@@ -96,3 +96,21 @@ purpose, limited to the image (`v0.9-zoom.md`).
 | Rendering | CSS transform on a wrapper during the gesture (no drawing per move), crisp redraw of the visible part from the full-resolution image on release; stage canvas keeps its size, so memory does not grow with zoom. Crop/rotate overlay is recomputed per move so handles keep their size. |
 | Loupes | Hidden once the zoomed view is as magnified as a loupe would be; otherwise as in v0.6. |
 | Gesture source | Pointer Events with two tracked pointers, `touch-action: none` on the stages. No touch or Safari gesture events. |
+
+## v0.10 decisions (2026-09-22, live document detection)
+
+Taken with Philip when v0.10 was added, from a user request: the dashed frame should trace
+the document while aiming, and the capture should apply the shear correction on its own
+(`v0.10-live-detect.md`).
+
+| Topic | Decision |
+|---|---|
+| Algorithm | The v0.8 edge search, unchanged, run on the live video from the static camera frame. The search band around the frame is the search area; the user still frames the page. Full-image detection stays out. |
+| Confidence | Strict: all four edges found, convex, large enough, rotation within the skew range. Plus stability: three agreeing runs (corners within 1 % of the frame width) before the outline shows, two misses before it hides. |
+| Feedback | The dashed frame becomes a polygon: grey static rectangle, or green quadrilateral on the detected corners. A short vibration when it turns green. No text, no auto-capture. |
+| What the bake uses | The still, detected once more with the strict rule, not the last live result: the still is grabbed later than the last preview frame and the hand moves. A miss on the still gives the v0.9 capture; a miss after a green outline shows the v0.4 warning briefly. |
+| Auto-bake | Rotation and shear are baked right after capture behind the busy overlay, margins kept as with confirm in the crop/rotate view. A wrong result costs one retake (back), which is cheaper than a visit to the editor for every scan. |
+| Toggle | Magic-wand icon button right of the shutter, `aria-pressed`, on by default. Session state only, not persisted: the spec's no-persistence rule stays untouched, and a stored preference would be a decision of its own. |
+| Automatic capture | Not in v0.10. The shutter is an explicit act in the spec; after [+] the camera opens on the same sheet still on the table and would capture it again; the user gets no moment to check framing and light before pixels are resampled. If wanted later: a hold timer with a countdown ring on the shutter, toggle becomes three-state. |
+| Loop | `requestVideoFrameCallback` (fallback `requestAnimationFrame`), at most one run per 150 ms, budget 15 ms per run, stops with the stream and with the toggle. Main thread only, no worker or WebGL. |
+
