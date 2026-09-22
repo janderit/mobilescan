@@ -54,7 +54,9 @@ the bilingual (DE/EN) product page with Impressum and Datenschutzhinweis, deploy
 `angles.ts`, `affine.ts`, `homography.ts`, `frame.ts` and `layout.ts`; the app shell `app.ts` holds
 the state machine and the transitions, with the screens in `camera-view.ts` (video, overlay, live
 detector, detect toggle), `captured-view.ts` (page header, stage, button bar, popover, share sheet),
-`editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `scan.ts` owns the page list.
+`editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `scan.ts` owns the page list. `detect.ts` is
+the canvas glue (`DetectScratch`, `detectFrameIn`) and a barrel over `detect-edges.ts`, `detect-frame.ts`,
+`detect-tracker.ts` and `detect-tone.ts`.
 
 Read in this order before implementing anything:
 
