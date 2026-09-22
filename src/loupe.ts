@@ -28,11 +28,11 @@ export type Corner = 'nw' | 'ne' | 'se' | 'sw';
 export const CORNERS: readonly Corner[] = ['nw', 'ne', 'se', 'sw'];
 
 /** What a drag in the crop/rotate view affects. */
-export type DragKind = 'move' | 'rotate' | Handle;
+export type DragKind = 'rotate' | Handle;
 
 /**
  * The corners a drag magnifies: a corner handle its own corner, an edge
- * handle the edge's two corners, body drag and rotation all four.
+ * handle the edge's two corners, rotation all four.
  */
 export function loupeCorners(kind: DragKind): Corner[] {
   switch (kind) {

@@ -14,6 +14,20 @@ export interface Frame {
   height: number;
   /** radians, 0 in v0.1 */
   angle: number;
+  /**
+   * v0.7: displacement of each corner (nw, ne, se, sw) from the rectangle
+   * corner, in frame-local coordinates (the rectangle's own axes, before
+   * rotation). Absent or all zero means the frame is the rectangle. Only the
+   * pending frame of the crop/rotate view ever carries non-zero offsets; a
+   * confirmed frame never does.
+   */
+  corners?: [Point, Point, Point, Point];
+}
+
+/** A point in image or frame-local pixels. */
+export interface Point {
+  x: number;
+  y: number;
 }
 
 /** The unit the edit views and the share code operate on: a live image plus its frame. */

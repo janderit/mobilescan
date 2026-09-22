@@ -37,7 +37,6 @@ describe('loupe corners', () => {
     expect(loupeCorners('s')).toEqual(['sw', 'se']);
     expect(loupeCorners('e')).toEqual(['ne', 'se']);
     expect(loupeCorners('w')).toEqual(['nw', 'sw']);
-    expect(loupeCorners('move')).toEqual(['nw', 'ne', 'se', 'sw']);
     expect(loupeCorners('rotate')).toEqual(['nw', 'ne', 'se', 'sw']);
   });
 });
@@ -234,7 +233,7 @@ describe('CropRotateView loupes', () => {
     expect(view.visibleLoupeBounds).toBeNull();
   });
 
-  it('shows two loupes for an edge and four for a body drag', () => {
+  it('shows two loupes for an edge and nothing for a touch on the frame body', () => {
     const nw = cornerOnView(0);
     const ne = cornerOnView(1);
     pointer('pointerdown', (nw.x + ne.x) / 2, nw.y);
@@ -243,23 +242,28 @@ describe('CropRotateView loupes', () => {
     pointer('pointercancel', (nw.x + ne.x) / 2, nw.y + 3);
     expect(shownLoupes()).toEqual([]);
 
-    // Body drag starting in the stage centre: the grid moves out from under the finger.
+    // The frame body cannot be dragged: no loupes.
     pointer('pointerdown', VIEW_W / 2, VIEW_H / 2 + 10);
     pointer('pointermove', VIEW_W / 2 + 3, VIEW_H / 2 + 13);
-    expect(shownLoupes()).toEqual(['nw', 'ne', 'se', 'sw']);
-    const bounds = view.visibleLoupeBounds!;
-    expect(bounds.y + bounds.height).toBe(VIEW_H / 2 + 10 - LOUPE_SUPPRESS_MARGIN);
-    pointer('pointerup', VIEW_W / 2 + 3, VIEW_H / 2 + 13);
     expect(shownLoupes()).toEqual([]);
+    pointer('pointerup', VIEW_W / 2 + 3, VIEW_H / 2 + 13);
   });
 
-  it('shows four loupes during fine rotation', () => {
+  it('shows four loupes during fine rotation, shifted out from under a finger in the stage centre', () => {
     view.element.querySelector<HTMLButtonElement>('button[aria-label="Drehen"]')!.click();
     const nw = cornerOnView(0);
     pointer('pointerdown', nw.x, nw.y);
     pointer('pointermove', nw.x + 4, nw.y);
     expect(shownLoupes()).toEqual(['nw', 'ne', 'se', 'sw']);
     pointer('pointerup', nw.x + 4, nw.y);
+    expect(shownLoupes()).toEqual([]);
+
+    pointer('pointerdown', VIEW_W / 2, VIEW_H / 2 + 10);
+    pointer('pointermove', VIEW_W / 2 + 3, VIEW_H / 2 + 13);
+    expect(shownLoupes()).toEqual(['nw', 'ne', 'se', 'sw']);
+    const bounds = view.visibleLoupeBounds!;
+    expect(bounds.y + bounds.height).toBe(VIEW_H / 2 + 10 - LOUPE_SUPPRESS_MARGIN);
+    pointer('pointerup', VIEW_W / 2 + 3, VIEW_H / 2 + 13);
     expect(shownLoupes()).toEqual([]);
   });
 

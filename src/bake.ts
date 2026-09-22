@@ -1,11 +1,13 @@
 /**
- * Bakes edits into the captured image: the frame rotation (v0.2 confirm) and
- * brightness/contrast (v0.3 confirm). Cropping never touches pixels.
+ * Bakes edits into the captured image: the frame rotation (v0.2 confirm),
+ * brightness/contrast (v0.3 confirm) and displaced corners (v0.7 confirm).
+ * Cropping never touches pixels.
  */
 
 import type { Capture, Frame } from './model';
-import { bakeLayout } from './geometry';
+import { bakeLayout, hasCornerOffsets, warpLayout, withoutCorners } from './geometry';
 import { releaseCanvas } from './canvas';
+import { warpImage } from './warp';
 import {
   applyTonePixels,
   isNeutralTone,
@@ -42,6 +44,28 @@ export function bakeRotation(capture: Capture, frame: Frame): Capture {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   releaseCanvas(image);
   return { image: canvas, frame: layout.frame };
+}
+
+/**
+ * Confirm of the crop/rotate view (v0.7): a frame whose corners are displaced
+ * is baked by warping the whole image so that the quadrilateral becomes the
+ * upright target rectangle (rotation included, one resample). Otherwise the
+ * v0.2 rotation path runs unchanged. The result never carries corner offsets.
+ */
+export function bakeFrame(capture: Capture, frame: Frame): Capture {
+  if (!hasCornerOffsets(frame)) {
+    return bakeRotation(capture, withoutCorners(frame));
+  }
+  const { image } = capture;
+  const layout = warpLayout(image.width, image.height, frame);
+  const canvas = warpImage(image, layout);
+  releaseCanvas(image);
+  return { image: canvas, frame: layout.frame };
+}
+
+/** True when confirming `frame` changes pixels (rotation or displaced corners). */
+export function frameNeedsBake(frame: Frame): boolean {
+  return frame.angle !== 0 || hasCornerOffsets(frame);
 }
 
 /** Rows per strip in the pixel-loop fallback, bounding the ImageData held at once. */

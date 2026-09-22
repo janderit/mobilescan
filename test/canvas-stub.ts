@@ -47,6 +47,11 @@ function fakeContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
       width: w,
       height: h,
     }),
+    createImageData: (w: number, h: number) => ({
+      data: new Uint8ClampedArray(w * h * 4),
+      width: w,
+      height: h,
+    }),
     putImageData: () => {},
   };
   return ctx as unknown as CanvasRenderingContext2D;

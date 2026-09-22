@@ -509,8 +509,15 @@ button {
   justify-content: space-between;
 }
 
+/* Two segments plus three compact buttons: 3 x 52 px buttons, 107 px
+   control, 3 x 8 px gaps = 287 px. Nothing may shrink, or the circular
+   buttons turn into ellipses. */
+.button-bar-compact > * {
+  flex: none;
+}
+
 .segmented-modes button {
-  width: 56px;
+  width: 48px;
   height: 44px;
 }
 

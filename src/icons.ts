@@ -68,3 +68,6 @@ export const chevronLeft =
 
 export const chevronRight =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><title>Next page</title><path d="M9 18l6-6-6-6"/></svg>';
+
+export const shear =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><title>Shear mode (independent corners)</title><path d="M5 7l14-4v18L5 17z"/><circle cx="5" cy="7" r="1.6" fill="currentColor"/><circle cx="19" cy="3" r="1.6" fill="currentColor"/><circle cx="19" cy="21" r="1.6" fill="currentColor"/><circle cx="5" cy="17" r="1.6" fill="currentColor"/></svg>';

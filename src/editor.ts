@@ -9,6 +9,11 @@
  *
  * Loupes (v0.6): while a drag is in progress, magnified views of the affected
  * frame corners sit in the centre of the stage (geometry in `loupe.ts`).
+ *
+ * Shear (v0.7): in crop mode the corner handles move each frame corner on its
+ * own while the edge handles keep cropping the underlying rectangle; the frame
+ * is drawn as that quadrilateral in both modes and the caller warps the image
+ * on confirm. The frame body cannot be dragged.
  */
 
 import * as icons from './icons';
@@ -18,13 +23,14 @@ import {
   applyAffine,
   baseAngle,
   clampSkew,
-  frameCorners,
+  CORNER_HANDLES,
   HANDLES,
   handleLocalPosition,
   hitHandle,
-  insideFrame,
   invertAffine,
-  moveFrame,
+  moveCorner,
+  quadCorners,
+  quadLocalCorners,
   resizeFrame,
   rotate90Right,
   toFrameLocal,
@@ -32,6 +38,7 @@ import {
   type Affine,
   type Handle,
   type Point,
+  type Quad,
 } from './geometry';
 import { releaseCanvas } from './canvas';
 import {
@@ -51,10 +58,12 @@ import { iconButton, segmentButton } from './ui';
 
 export type EditMode = 'crop' | 'rotate';
 
+const MODES: readonly EditMode[] = ['crop', 'rotate'];
+
 export interface EditorCallbacks {
   /** Back: discard the pending frame. */
   onCancel(): void;
-  /** Confirm with the pending frame (angle may be non-zero: the caller bakes it). */
+  /** Confirm with the pending frame (angle or corner offsets may be non-zero: the caller bakes them). */
   onConfirm(frame: Frame): void;
 }
 
@@ -68,8 +77,8 @@ const MAX_DPR = 2;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 type Drag =
-  | { kind: 'move'; start: Frame; startImage: Point }
   | { kind: 'resize'; start: Frame; handle: Handle; startLocal: Point }
+  | { kind: 'shear'; start: Frame; corner: Handle; startLocal: Point }
   | { kind: 'rotate'; startAngle: number; base: number; startTouch: number; centreView: Point; radius: number };
 
 /** Loupe state of one drag: where the cluster goes, or nothing if suppressed. */
@@ -100,7 +109,7 @@ export class CropRotateView {
   private readonly overlay: SVGSVGElement;
   private readonly shade: SVGPathElement;
   private readonly frameGroup: SVGGElement;
-  private readonly frameRect: SVGRectElement;
+  private readonly framePolygon: SVGPolygonElement;
   private readonly handles: Map<Handle, SVGCircleElement>;
   private readonly arc: SVGPathElement;
   private readonly modeButtons: Record<EditMode, HTMLButtonElement>;
@@ -124,8 +133,8 @@ export class CropRotateView {
     this.overlay.setAttribute('aria-hidden', 'true');
     this.shade = svgEl('path', { class: 'edit-shade', 'fill-rule': 'evenodd' });
     this.frameGroup = svgEl('g');
-    this.frameRect = svgEl('rect', { class: 'edit-frame' });
-    this.frameGroup.append(this.frameRect);
+    this.framePolygon = svgEl('polygon', { class: 'edit-frame' });
+    this.frameGroup.append(this.framePolygon);
     this.handles = new Map();
     for (const handle of HANDLES) {
       const circle = svgEl('circle', { class: 'edit-handle', r: String(HANDLE_RADIUS) });
@@ -169,7 +178,7 @@ export class CropRotateView {
     segmented.setAttribute('aria-label', 'Modus');
     this.modeButtons = {} as Record<EditMode, HTMLButtonElement>;
     const modes: [EditMode, string, string][] = [
-      ['crop', icons.crop, 'Zuschneiden'],
+      ['crop', icons.shear, 'Zuschneiden und entzerren'],
       ['rotate', icons.rotate, 'Drehen'],
     ];
     for (const [mode, icon, label] of modes) {
@@ -201,6 +210,9 @@ export class CropRotateView {
   open(capture: Capture): void {
     this.capture = capture;
     this.pending = { ...capture.frame };
+    if (capture.frame.corners) {
+      this.pending.corners = capture.frame.corners.map((p) => ({ ...p })) as Quad;
+    }
     this.mode = 'crop';
     this.drag = null;
     this.drawnBase = null;
@@ -247,7 +259,7 @@ export class CropRotateView {
   }
 
   private renderMode(): void {
-    for (const mode of ['crop', 'rotate'] as const) {
+    for (const mode of MODES) {
       this.modeButtons[mode].setAttribute('aria-checked', String(mode === this.mode));
     }
     this.stage.dataset.mode = this.mode;
@@ -300,26 +312,28 @@ export class CropRotateView {
     // On screen the frame is turned by (angle - base): the display already
     // undoes the base angle, only the fine skew remains.
     const skew = pending.angle - baseAngle(pending.angle);
-    const w = pending.width * scale;
-    const h = pending.height * scale;
     this.frameGroup.setAttribute(
       'transform',
       `translate(${centre.x} ${centre.y}) rotate(${degrees(skew)})`,
     );
-    this.frameRect.setAttribute('x', String(-w / 2));
-    this.frameRect.setAttribute('y', String(-h / 2));
-    this.frameRect.setAttribute('width', String(w));
-    this.frameRect.setAttribute('height', String(h));
-    const showHandles = this.mode === 'crop';
+    // The frame is the quadrilateral of the (possibly displaced) corners, in
+    // frame-local coordinates scaled to CSS pixels.
+    this.framePolygon.setAttribute(
+      'points',
+      quadLocalCorners(pending)
+        .map((p) => `${p.x * scale},${p.y * scale}`)
+        .join(' '),
+    );
+    const visibleHandles: readonly Handle[] = this.mode === 'crop' ? HANDLES : [];
     for (const [handle, circle] of this.handles) {
       const local = handleLocalPosition(pending, handle);
       circle.setAttribute('cx', String(local.x * scale));
       circle.setAttribute('cy', String(local.y * scale));
-      circle.setAttribute('visibility', showHandles ? 'visible' : 'hidden');
+      circle.setAttribute('visibility', visibleHandles.includes(handle) ? 'visible' : 'hidden');
     }
     // Dim everything outside the frame.
     const viewBox = this.overlay.viewBox.baseVal;
-    const corners = frameCorners(pending).map((p) => applyAffine(t, p));
+    const corners = quadCorners(pending).map((p) => applyAffine(t, p));
     const outer = `M0 0H${viewBox.width}V${viewBox.height}H0Z`;
     const inner = corners.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join('') + 'Z';
     this.shade.setAttribute('d', outer + inner);
@@ -370,14 +384,14 @@ export class CropRotateView {
         radius: Math.hypot(view.x - centreView.x, view.y - centreView.y),
       };
     } else {
+      // Corners shear (each corner on its own), edges crop the rectangle.
       const local = toFrameLocal(pending, image);
       const handle = hitHandle(pending, local, HANDLE_HIT_RADIUS / affineScale(this.transform));
-      if (handle) {
-        this.drag = { kind: 'resize', start: pending, handle, startLocal: local };
-      } else if (insideFrame(pending, local)) {
-        this.drag = { kind: 'move', start: pending, startImage: image };
+      if (!handle) return;
+      if (CORNER_HANDLES.includes(handle)) {
+        this.drag = { kind: 'shear', start: pending, corner: handle, startLocal: local };
       } else {
-        return;
+        this.drag = { kind: 'resize', start: pending, handle, startLocal: local };
       }
     }
     this.beginLoupes(view);
@@ -401,11 +415,13 @@ export class CropRotateView {
       this.renderArc();
     } else {
       const image = applyAffine(invertAffine(this.transform), view);
-      if (drag.kind === 'move') {
-        this.pending = moveFrame(
+      if (drag.kind === 'shear') {
+        const local = toFrameLocal(drag.start, image);
+        this.pending = moveCorner(
           drag.start,
-          image.x - drag.startImage.x,
-          image.y - drag.startImage.y,
+          drag.corner,
+          local.x - drag.startLocal.x,
+          local.y - drag.startLocal.y,
           width,
           height,
         );
@@ -442,7 +458,7 @@ export class CropRotateView {
   private beginLoupes(startView: Point): void {
     const drag = this.drag;
     if (!drag) return;
-    const kind = drag.kind === 'resize' ? drag.handle : drag.kind;
+    const kind = drag.kind === 'resize' ? drag.handle : drag.kind === 'shear' ? drag.corner : drag.kind;
     const layout = placeLoupes(loupeCorners(kind), this.stage.clientWidth, this.stage.clientHeight, startView);
     this.loupeState = layout ? { layout, shown: false } : null;
   }
@@ -478,7 +494,7 @@ export class CropRotateView {
     }
     const base = baseAngle(pending.angle);
     const scale = loupeScale(affineScale(this.transform), dpr);
-    const corners = frameCorners(pending);
+    const corners = quadCorners(pending);
     const { width, height } = capture.image;
     for (const { corner } of state.layout) {
       const centre = corners[CORNERS.indexOf(corner)]!;

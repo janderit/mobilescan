@@ -8,7 +8,7 @@
 import * as icons from './icons';
 import { MAX_PAGES, type Capture, type CompressionLevel, type Page } from './model';
 import { afterPaint, iconButton, prefersReducedMotion } from './ui';
-import { coverTransform, frameToViewRect, initialFrame, scaleFrame, visibleImageRect } from './geometry';
+import { coverTransform, frameToViewRect, hasCornerOffsets, initialFrame, scaleFrame, visibleImageRect } from './geometry';
 import type { Frame } from './model';
 import { COMPRESSION_LEVELS, DEFAULT_COMPRESSION } from './quality';
 import {
@@ -26,7 +26,7 @@ import { applyCapture, asCapture, newPage, parkPage, releasePage, wakePage } fro
 import { CropRotateView } from './editor';
 import { ToneView } from './tone-view';
 import { isNeutralTone, type Tone } from './tone';
-import { bakeRotation, bakeTone } from './bake';
+import { bakeFrame, bakeTone, frameNeedsBake } from './bake';
 import { BackTrap } from './navigation';
 import { swipeDirection } from './swipe';
 
@@ -854,16 +854,17 @@ export class App {
 
   /**
    * Leaves the crop/rotate view. With a frame: store it, baking any rotation
-   * into the image first, behind the busy overlay. Without: discard the
-   * pending edits. The view itself is closed once it has faded out.
+   * and displaced corners into the image first, behind the busy overlay.
+   * Without: discard the pending edits. The view itself is closed once it
+   * has faded out.
    */
   private async closeEditor(frame: Frame | null): Promise<void> {
     if (this.state.busy || this.state.screen !== 'edit') return;
     const page = this.currentPage();
     if (frame && page?.image) {
       await this.runBusy(() => {
-        applyCapture(page, bakeRotation(asCapture(page), frame));
-      }, 'Drehen fehlgeschlagen', frame.angle !== 0);
+        applyCapture(page, bakeFrame(asCapture(page), frame));
+      }, hasCornerOffsets(frame) ? 'Entzerren fehlgeschlagen' : 'Drehen fehlgeschlagen', frameNeedsBake(frame));
       this.renderPreview();
     }
     this.state.screen = 'captured';
