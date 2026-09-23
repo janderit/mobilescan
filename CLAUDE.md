@@ -144,7 +144,7 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   wand measures the source image, not the preview.
 - **Live detect and the capture rule.** The camera view runs the strict rule (`detectFrameStrict`)
   on the video with `DetectionTracker` hysteresis (`src/live-detect.ts`) and turns the outline green
-  on a hit. The toggle right of the shutter is session state, on by default, never persisted. On
+  on a hit. The toggle right of the shutter is a switch (`switchButton`, `role="switch"`), session state, on by default, never persisted. On
   capture with the toggle on, the still is detected once more from the scaled static frame; a hit
   becomes the page frame and is baked behind the busy overlay (the page is created with the static
   frame, so a failed bake leaves it), a miss keeps the static frame and shows the notice if the
@@ -195,7 +195,7 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   session; nothing is written to storage, and the service worker precaches only the app shell.
 
 Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
-Camera view: [back] top-left, [shutter] with the live-detect toggle to its right, dashed outline (grey static frame or green detected document).
+Camera view: [back] top-left, [shutter] with the live-detect switch to its right, dashed outline (grey static frame or green detected document).
 Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm], with loupes in the stage centre during drags. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [auto] [confirm].
 
 ## Version roadmap

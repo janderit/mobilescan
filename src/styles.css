@@ -237,24 +237,61 @@ button {
   stroke: var(--frame-found);
 }
 
+/* Switch (v0.12): a track with a knob that carries the icon; green track when on. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px;
+  background: none;
+  border: 0;
+  color: var(--ink);
+}
+
+.switch-track {
+  position: relative;
+  display: block;
+  width: 60px;
+  height: 34px;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  transition: background var(--fade), border-color var(--fade);
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform var(--fade);
+}
+
+.switch-knob svg {
+  width: 18px;
+  height: 18px;
+}
+
+.switch[aria-checked='true'] .switch-track {
+  background: var(--frame-found);
+  border-color: var(--frame-found);
+}
+
+.switch[aria-checked='true'] .switch-knob {
+  transform: translateX(26px);
+}
+
 /* Live detection toggle (v0.10): right of the shutter, on its row. */
 .camera-detect {
   position: absolute;
-  bottom: calc(40px + var(--safe-bottom));
-  left: calc(50% + 72px);
-  width: 48px;
-  height: 48px;
-}
-
-.camera-detect svg {
-  width: 24px;
-  height: 24px;
-}
-
-.camera-detect[aria-pressed='true'] {
-  background: var(--frame-found);
-  border-color: var(--frame-found);
-  color: #111827;
+  bottom: calc(39px + var(--safe-bottom));
+  left: calc(50% + 60px);
 }
 
 .camera-back {
@@ -736,7 +773,9 @@ button {
     animation: none;
   }
 
-  .camera-outline {
+  .camera-outline,
+  .switch-track,
+  .switch-knob {
     transition: none;
   }
 }

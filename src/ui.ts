@@ -37,6 +37,29 @@ export function iconButton(icon: string, label: string, className = ''): HTMLBut
   return button;
 }
 
+/**
+ * An on/off switch (`role="switch"`, `aria-checked`): a track with a knob
+ * that carries the icon, so the meaning stays icon-only. The caller sets
+ * `aria-checked`.
+ */
+export function switchButton(icon: string, label: string, className = ''): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `switch ${className}`.trim();
+  button.setAttribute('role', 'switch');
+  button.setAttribute('aria-label', label);
+  button.setAttribute('aria-checked', 'false');
+  const knob = document.createElement('span');
+  knob.className = 'switch-knob';
+  knob.innerHTML = icon;
+  knob.querySelector('svg')?.setAttribute('aria-hidden', 'true');
+  const track = document.createElement('span');
+  track.className = 'switch-track';
+  track.append(knob);
+  button.append(track);
+  return button;
+}
+
 /** A radio-style icon button for a segmented control. */
 export function segmentButton(icon: string, label: string, onSelect: () => void): HTMLButtonElement {
   const button = document.createElement('button');

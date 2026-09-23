@@ -232,7 +232,7 @@ describe('camera view with live detection (v0.10)', () => {
   it('shows the toggle on, the static outline and the shade', async () => {
     await openCamera();
     const toggle = button(root, 'Dokument automatisch erkennen');
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
     const overlay = root.querySelector('.camera-frame')!;
     expect(overlay.hasAttribute('hidden')).toBe(false);
     expect(overlay.classList.contains('found')).toBe(false);
@@ -300,7 +300,7 @@ describe('camera view with live detection (v0.10)', () => {
     await openCamera();
     const toggle = button(root, 'Dokument automatisch erkennen');
     toggle.click();
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
     button(root, 'Foto aufnehmen').click();
     await settle();
     expect(app.screen).toBe('captured');
@@ -310,7 +310,7 @@ describe('camera view with live detection (v0.10)', () => {
     button(root, 'Zurück', '.screen-captured').click();
     await settle();
     expect(app.screen).toBe('camera');
-    expect(button(root, 'Dokument automatisch erkennen').getAttribute('aria-pressed')).toBe('false');
+    expect(button(root, 'Dokument automatisch erkennen').getAttribute('aria-checked')).toBe('false');
   });
 
   it('stores nothing: no localStorage key is written', async () => {

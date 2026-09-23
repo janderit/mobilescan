@@ -13,7 +13,7 @@
 
 import * as icons from './icons';
 import type { Point, UprightFrame } from './model';
-import { iconButton, el, prefersReducedMotion } from './ui';
+import { iconButton, switchButton, el, prefersReducedMotion } from './ui';
 import { applyAffine, coverTransform, frameCorners, initialFrame, visibleImageRect, type Affine } from './geometry';
 import { captureStill, stopCamera, type CameraSession } from './camera';
 import { releaseCanvas } from './canvas';
@@ -108,7 +108,8 @@ export class CameraView {
       if (event.button === 0) callbacks.onShutter();
     });
     shutter.addEventListener('click', () => callbacks.onShutter());
-    this.detectButton = iconButton(icons.magicWand, 'Dokument automatisch erkennen', 'dark camera-detect');
+    // A switch, not a button: a green wand button read as "press for magic" on the device (v0.12).
+    this.detectButton = switchButton(icons.magicWand, 'Dokument automatisch erkennen', 'camera-detect');
     this.detectButton.addEventListener('click', () => this.toggleLiveDetect());
     this.element = el('section', 'screen screen-camera', this.video, this.frameOverlay.element, back, shutter, this.detectButton);
     this.liveDetector = new LiveDetector(this.video, { onResult: (state) => this.onLiveResult(state) });
@@ -304,6 +305,6 @@ export class CameraView {
   }
 
   private renderToggle(): void {
-    this.detectButton.setAttribute('aria-pressed', String(this.detectEnabled));
+    this.detectButton.setAttribute('aria-checked', String(this.detectEnabled));
   }
 }

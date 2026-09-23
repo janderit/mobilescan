@@ -66,6 +66,14 @@ def icon_at(name, x, y, size=28, color="#111827"):
     return (f'<g transform="translate({x - size/2:.1f},{y - size/2:.1f}) scale({s:.3f})" fill="none" stroke="{color}" '
             f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{ICON[name][1]}</g>')
 
+def switch(name, x, y, on=True, w=60, h=34):
+    """An on/off switch centred at x,y: track plus a knob carrying the icon (v0.12)."""
+    track = "#22c55e" if on else "#9ca3af"
+    kx = x + w/2 - h/2 if on else x - w/2 + h/2
+    return (f'<rect x="{x-w/2}" y="{y-h/2}" width="{w}" height="{h}" rx="{h/2}" fill="{track}" stroke="{track}" stroke-width="1.5"/>'
+            + f'<circle cx="{kx}" cy="{y}" r="{h/2-2.5}" fill="#ffffff"/>'
+            + icon_at(name, kx, y, 18, "#111827"))
+
 def btn(name, x, y, r=32, fill="#ffffff", stroke="#d1d5db", color="#111827", size=28):
     return (f'<circle cx="{x}" cy="{y}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="1.5"/>'
             + icon_at(name, x, y, size, color))
@@ -410,7 +418,7 @@ def live_detect():
             + f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.15"/>'
             + quad_frame(pts, color="#22c55e", handles=False)
             + btn("shutter", W/2, 760, r=40, fill="#ffffff", stroke="#9ca3af", color="#1e40af", size=52)
-            + btn("magic-wand", W/2 + 110, 760, r=28, fill="#ffffff", stroke="#ffffff", color="#111827", size=26)
+            + switch("magic-wand", W/2 + 110, 760)
             + btn("arrow-left", 48, 90, r=24, fill="#111827", stroke="#111827", color="#ffffff", size=24))
     return body
 
@@ -448,7 +456,7 @@ SCREENS = [
     ("v0.8-01-auto-crop", "v0.8 Auto-detected frame", auto_crop(), "#ffffff", "After [auto]: frame on the paper edges, wand left of confirm."),
     ("v0.8-02-auto-tone", "v0.8 Auto black-and-white", auto_tone(), "#ffffff", "After [auto]: grayscale on, contrast raised, wand in the bar."),
     ("v0.9-01-zoom", "v0.9 Pinch zoom on the captured view", zoomed(), "#ffffff", "Pinch: the image zooms inside the stage, the bar stays put."),
-    ("v0.10-01-live-detect", "v0.10 Live document detection", live_detect(), "#374151", "Document found: green outline on the page, wand toggle on."),
+    ("v0.10-01-live-detect", "v0.10 Live document detection", live_detect(), "#374151", "Document found: green outline on the page, detect switch on (switch since v0.12)."),
     ("v0.11-01-share-menu", "v0.11 Share popover with one page", share_menu(), "#ffffff", "One page: share opens PDF | image above the share button."),
 ]
 

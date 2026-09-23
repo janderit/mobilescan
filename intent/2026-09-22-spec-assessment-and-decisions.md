@@ -141,5 +141,6 @@ after the steady moment the outline announced (`v0.12-frozen-still.md`).
 | Conditions | Younger than the window, the outline still green, and every live corner within the tracker's tolerance (3 % of the frame width) of the corners at the grab. A deliberate move after the buzz therefore gets a fresh still of the new framing. |
 | Memory | One extra capture canvas at most, released (width 0) when the window expires, the outline is lost, the toggle goes off, the frame is laid out anew or the camera closes. Grabbing on every run was rejected: 64 MB of churn several times a second is not affordable on iOS. |
 | Press, not release | The shutter fires on `pointerdown`; the click after it finds the session closed. Keyboard activation still works through the click. |
+| Toggle as a switch | The green wand button of v0.10 was read as a button that does something, not as a state. A switch (track green when on, knob with the wand icon) says on/off without text and keeps the icon-only rule. |
 | Feedback | None: the captured view shows the page, whichever still it came from. A hint about which still was used would be text or a new icon for a detail the user cannot act on. |
 
