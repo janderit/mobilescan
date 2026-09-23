@@ -393,6 +393,17 @@ button {
   left: calc(50% + 60px);
 }
 
+/* Wide-angle lens switch (v1.2): left of the shutter, mirroring the detect switch; absent where no lens exists. */
+.camera-lens {
+  position: absolute;
+  bottom: calc(39px + var(--safe-bottom));
+  right: calc(50% + 60px);
+}
+
+.camera-lens[hidden] {
+  display: none;
+}
+
 .camera-back {
   position: absolute;
   top: calc(16px + var(--safe-top));

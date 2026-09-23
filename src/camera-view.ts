@@ -8,14 +8,16 @@
  * outline gets the steady picture from before the press moved the phone
  * (v0.12). The capture itself (`takePhoto`) stays in the app shell, which
  * reads `liveFrame` and `liveFound` at the shutter and takes the still
- * through `takeStill`.
+ * through `takeStill`. The wide-angle switch left of the shutter (v1.2) shows
+ * only while a `LensControl` is set; a switch releases the frozen still,
+ * restarts the live loop on the new stream and lays the frame out anew.
  */
 
 import * as icons from './icons';
 import type { Point, UprightFrame } from './model';
 import { iconButton, switchButton, el, prefersReducedMotion } from './ui';
 import { applyAffine, coverTransform, frameCorners, initialFrame, visibleImageRect, type Affine } from './geometry';
-import { captureStill, stopCamera, type CameraSession } from './camera';
+import { captureStill, LensSwitchError, stopCamera, type CameraSession, type Lens, type LensControl } from './camera';
 import { releaseCanvas } from './canvas';
 import { AGREE_FRACTION, quadsAgree, type TrackerState } from './detect';
 import type { Quad } from './geometry';
@@ -59,6 +61,10 @@ export interface CameraViewCallbacks {
   onBack: () => void;
   /** Shutter button. */
   onShutter: () => void;
+  /** The lens switch changed the lens (also back to default after a failed switch). */
+  onLensChange: (lens: Lens) => void;
+  /** A lens switch lost the camera: no stream runs any more. */
+  onLensError: (error: unknown) => void;
 }
 
 export class CameraView {
@@ -68,7 +74,13 @@ export class CameraView {
 
   private readonly frameOverlay: FrameOverlay;
   private readonly detectButton: HTMLButtonElement;
+  private readonly lensButton: HTMLButtonElement;
   private readonly liveDetector: LiveDetector;
+  /** How the running session switches lenses; null while closed or where no wide lens exists. */
+  private lensControl: LensControl | null = null;
+  private currentLens: Lens = 'default';
+  /** True while a lens switch is pending; the switch is hidden then. */
+  private switching = false;
   private liveState: TrackerState = { found: false, corners: null };
   /** Live document detection and auto-bake on capture; session state only. */
   private detectEnabled = true;
@@ -85,7 +97,7 @@ export class CameraView {
   /** Detaches the window listeners on dispose(). */
   private readonly listeners = new AbortController();
 
-  constructor(callbacks: CameraViewCallbacks) {
+  constructor(private readonly callbacks: CameraViewCallbacks) {
     this.video = document.createElement('video');
     this.video.className = 'camera-video';
     this.video.autoplay = true;
@@ -111,7 +123,19 @@ export class CameraView {
     // A switch, not a button: a green wand button read as "press for magic" on the device (v0.12).
     this.detectButton = switchButton(icons.magicWand, 'Dokument automatisch erkennen', 'camera-detect');
     this.detectButton.addEventListener('click', () => this.toggleLiveDetect());
-    this.element = el('section', 'screen screen-camera', this.video, this.frameOverlay.element, back, shutter, this.detectButton);
+    this.lensButton = switchButton(icons.wideAngle, 'Weitwinkel', 'camera-lens');
+    this.lensButton.hidden = true;
+    this.lensButton.addEventListener('click', () => void this.toggleLens());
+    this.element = el(
+      'section',
+      'screen screen-camera',
+      this.video,
+      this.frameOverlay.element,
+      back,
+      shutter,
+      this.lensButton,
+      this.detectButton,
+    );
     this.liveDetector = new LiveDetector(this.video, { onResult: (state) => this.onLiveResult(state) });
 
     const { signal } = this.listeners;
@@ -145,6 +169,77 @@ export class CameraView {
     this.syncLiveDetector(false);
     this.renderToggle();
     this.renderCameraFrame();
+  }
+
+  /** The lens the running session shows. */
+  get lens(): Lens {
+    return this.currentLens;
+  }
+
+  /** Whether the lens switch is on screen. */
+  get lensSwitchVisible(): boolean {
+    return !this.lensButton.hidden;
+  }
+
+  /**
+   * Gives the view the lens control of the running session (null: none, the
+   * switch stays away). The session is on the default lens at this point.
+   */
+  setLensControl(control: LensControl | null): void {
+    this.lensControl = control;
+    this.currentLens = 'default';
+    this.renderLens();
+  }
+
+  /**
+   * Switches the running session to a lens: frozen still released, live loop
+   * stopped, the control's stream swap awaited, frame laid out anew and the
+   * loop restarted. Resolves with the lens shown afterwards. Rejects only when
+   * the camera is gone (the caller shows the error screen); a failed switch
+   * that left a stream running resolves with that stream's lens.
+   */
+  async selectLens(lens: Lens): Promise<Lens> {
+    const control = this.lensControl;
+    const session = this.currentSession;
+    if (!control || !session || this.switching || lens === this.currentLens) return this.currentLens;
+    this.switching = true;
+    this.renderLens();
+    this.liveDetector.stop();
+    this.releaseFrozen();
+    this.liveState = { found: false, corners: null };
+    this.renderCameraFrame(); // the outline goes grey until the loop finds the document on the new stream
+    let next: CameraSession;
+    let shown = lens;
+    try {
+      next = await control.select(lens);
+    } catch (error) {
+      console.error('Objektivwechsel fehlgeschlagen', error);
+      const fallback = error instanceof LensSwitchError ? error.fallback : null;
+      if (!fallback) {
+        this.switching = false;
+        this.currentSession = null;
+        this.frame = null;
+        this.cover = null;
+        this.frameOverlay.visible = false;
+        this.renderLens();
+        throw error;
+      }
+      next = fallback;
+      shown = 'default';
+    }
+    this.switching = false;
+    if (this.currentSession !== session) {
+      // Closed while switching: the new stream has no view to show it.
+      if (next !== session) stopCamera(next);
+      this.renderLens();
+      return this.currentLens;
+    }
+    this.currentSession = next;
+    this.currentLens = shown;
+    this.frame = null; // a new stream: lay the frame out from scratch
+    this.layout();
+    this.renderLens();
+    return shown;
   }
 
   /** True while the outline is green: detection on and a document found. */
@@ -224,6 +319,9 @@ export class CameraView {
     this.frame = null;
     this.cover = null;
     this.frameOverlay.visible = false;
+    this.lensControl = null;
+    this.currentLens = 'default';
+    this.renderLens();
   }
 
   /** Releases the view for good: closes it and detaches the listeners. */
@@ -302,6 +400,23 @@ export class CameraView {
 
   private toggleLiveDetect(): void {
     this.liveDetect = !this.detectEnabled;
+  }
+
+  private async toggleLens(): Promise<void> {
+    if (!this.lensControl || !this.currentSession || this.switching) return;
+    const wanted: Lens = this.currentLens === 'wide' ? 'default' : 'wide';
+    try {
+      const shown = await this.selectLens(wanted);
+      this.callbacks.onLensChange(shown);
+    } catch (error) {
+      this.callbacks.onLensError(error);
+    }
+  }
+
+  /** The lens switch: present only with a control and a session, hidden during a switch. */
+  private renderLens(): void {
+    this.lensButton.hidden = !this.lensControl || !this.currentSession || this.switching;
+    this.lensButton.setAttribute('aria-checked', String(this.currentLens === 'wide'));
   }
 
   private renderToggle(): void {

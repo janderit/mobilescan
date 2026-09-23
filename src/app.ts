@@ -16,7 +16,7 @@ import type { CompressionLevel, Frame, Page, ShareFormat } from './model';
 import { el, prefersReducedMotion } from './ui';
 import { initialFrame, scaleFrame } from './geometry';
 import { DEFAULT_COMPRESSION } from './quality';
-import { cameraErrorKind, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
+import { cameraErrorKind, probeLenses, startCamera, stopCamera, type CameraErrorKind, type CameraSession, type Lens } from './camera';
 import { buildJpegFile, buildPdfFile, shareFile } from './share';
 import type { UpdateChecker } from './update';
 import { UpdatePrompt } from './update-prompt';
@@ -56,6 +56,8 @@ interface State {
   level: CompressionLevel;
   cameraError: CameraErrorKind;
   cameraOrigin: CameraOrigin;
+  /** The lens the camera opens with (v1.2); kept for the session, applied where a wide lens exists. */
+  lens: Lens;
 }
 
 export { FADE_MS } from './screen-switcher';
@@ -90,6 +92,7 @@ export class App {
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
     cameraOrigin: 'start',
+    lens: 'default',
   };
 
   /** The pages of the scan and which one is on screen. */
@@ -134,6 +137,10 @@ export class App {
     this.cameraView = new CameraView({
       onBack: () => this.closeCamera(),
       onShutter: () => void this.takePhoto(),
+      onLensChange: (lens) => {
+        this.state.lens = lens;
+      },
+      onLensError: (error) => this.cameraFailed(error),
     });
     // Camera error: warning, retry, back. No text.
     this.errorView = new ErrorView({
@@ -236,6 +243,11 @@ export class App {
   /** Index of the page on screen, for tests. */
   get currentIndex(): number {
     return this.scan.currentIndex;
+  }
+
+  /** The lens the camera opens with, for tests. */
+  get lens(): Lens {
+    return this.state.lens;
   }
 
   /** Pages holding a full-resolution canvas; must never exceed one (tests). */
@@ -410,10 +422,7 @@ export class App {
     try {
       session = await startCamera(this.cameraView.video);
     } catch (error) {
-      console.error('Kamera nicht verfügbar', error);
-      this.state.cameraError = cameraErrorKind(error);
-      if (this.state.screen === 'camera') this.state.screen = 'error';
-      this.render();
+      this.cameraFailed(error);
       return;
     } finally {
       this.cameraStarting = false;
@@ -430,6 +439,33 @@ export class App {
     }
     this.cameraView.open(session);
     this.render();
+    await this.applyLens(session);
+  }
+
+  /** The camera could not start or was lost: the error screen names the cause. */
+  private cameraFailed(error: unknown): void {
+    console.error('Kamera nicht verfügbar', error);
+    this.state.cameraError = cameraErrorKind(error);
+    this.state.lens = 'default';
+    if (this.state.screen === 'camera') this.state.screen = 'error';
+    this.render();
+  }
+
+  /**
+   * Looks for a wide lens next to the started session and, when the session
+   * remembers the wide lens, switches to it. A wide lens that does not open
+   * resets the choice; the default picture stays (v1.2).
+   */
+  private async applyLens(session: CameraSession): Promise<void> {
+    const control = await probeLenses(session);
+    if (this.cameraView.session !== session) return; // left or lost while probing
+    this.cameraView.setLensControl(control);
+    if (!control || this.state.lens !== 'wide') return;
+    try {
+      this.state.lens = await this.cameraView.selectLens('wide');
+    } catch (error) {
+      this.cameraFailed(error);
+    }
   }
 
   /** Camera back: to the start page, or back to the page shown before [+]. */

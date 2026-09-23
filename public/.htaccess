@@ -19,7 +19,7 @@ SetEnvIf Request_URI "^/app/assets/" MOBILESCAN_IMMUTABLE
     # Never let the browser/proxy cache the files that decide which build is
     # active (version.json is what the in-app update check reads); the hashed
     # assets below are cached forever instead.
-    <FilesMatch "^(sw\.js|index\.html|manifest\.webmanifest|version\.json)$">
+    <FilesMatch "^(sw\.js|index\.html|diagnose\.html|manifest\.webmanifest|version\.json)$">
         Header set Cache-Control "no-cache"
     </FilesMatch>
 

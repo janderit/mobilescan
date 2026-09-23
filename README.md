@@ -7,7 +7,7 @@ MobileScan is a progressive web app that allows users to scan paper documents on
 
 ## Project state
 
-v0.12 is implemented (capture + share, crop/rotate, brightness/contrast/temperature, grayscale, error states, history integration, transitions, multi-page PDFs, loupe previews while cropping and rotating, shear / perspective correction, auto-detect for frame and tone, pinch zoom on the image, live document detection in the camera view, sharing a single page as a JPEG, the still of the green moment for a shutter pressed right after it). Run `npm install`, then `npm run dev` for a local HTTPS
+v0.12 is implemented (capture + share, crop/rotate, brightness/contrast/temperature, grayscale, error states, history integration, transitions, multi-page PDFs, loupe previews while cropping and rotating, shear / perspective correction, auto-detect for frame and tone, pinch zoom on the image, live document detection in the camera view, sharing a single page as a JPEG, the still of the green moment for a shutter pressed right after it, DIN completion of a third detected edge, the wide-angle lens switch). Run `npm install`, then `npm run dev` for a local HTTPS
 dev server reachable from a phone on the LAN, or `npm run build` / `npm run deploy`; see
 `CLAUDE.md` for the full command list. The spec below is the authoritative UX description.
 Open questions in it have been resolved and the resolutions are recorded in `intent/`:
@@ -41,6 +41,8 @@ The frame shall be about 90% of the total image size, to allow for later rotatio
 A small info button in the bottom right corner of the start page opens the product page (https://mobilescan.app, with description, Impressum and Datenschutzhinweis) in the browser.
 
 While aiming, the app looks for a document inside the frame. When one is found with confidence, the dashed frame turns green and traces the outline of the page (its four corners, as the auto-detect in the crop/rotate view finds them), so the user sees before taking the picture that the scan will come out right. Taking the picture then applies the perspective correction on its own: the captured image shows the page upright. When no document is found, the frame stays grey and the picture is taken as before. This detection can be switched off with a switch (a knob with the magic-wand icon, green when on) next to the camera button; it is on by default and the choice is kept until the app is closed. The picture is always taken by the user; the app never captures on its own. Since pressing the camera button in reaction to the green frame tends to move the phone, the app keeps the picture of the moment the frame turned green for a short while (about half a second): a press within that time, while the frame is still green and the document has not moved, uses that steady picture; otherwise the picture is taken at the press as usual. The camera button reacts to the press, not the release.
+
+Phones with an ultra-wide rear camera get a second switch, left of the camera button, that changes to that lens and back while aiming, for sheets that do not fit the frame at the normal lens. It appears only where the browser lists a second rear camera (on Android the first switch may take a moment while the app finds the right one) and the choice is kept until the app is closed.
 
 Details: `intent/v0.10-live-detect.md`, `intent/v0.12-frozen-still.md`, mockup `intent/mockups/v0.10-01-live-detect.svg`.
 

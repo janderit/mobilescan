@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>MobileScan Kameradiagnose</title>
+    <style>
+      body { margin: 0; padding: 16px; font: 14px/1.4 system-ui, sans-serif; background: #111827; color: #e5e7eb; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      h2 { font-size: 15px; margin: 20px 0 6px; color: #93c5fd; }
+      button { font: inherit; padding: 8px 12px; margin: 4px 4px 4px 0; border: 1px solid #6b7280; border-radius: 6px; background: #1f2937; color: inherit; }
+      button.active { border-color: #22c55e; }
+      pre { white-space: pre-wrap; word-break: break-all; background: #1f2937; padding: 8px; border-radius: 6px; font-size: 12px; }
+      video { width: 100%; max-height: 40vh; background: #000; border-radius: 6px; }
+      .muted { color: #9ca3af; }
+    </style>
+  </head>
+  <body>
+    <h1>MobileScan Kameradiagnose</h1>
+    <p class="muted">Nur zum Nachsehen, was der Browser über die Kameras verrät. Nichts wird gespeichert oder gesendet.</p>
+    <div id="diagnose"></div>
+    <script type="module" src="/src/diagnose.ts"></script>
+  </body>
+</html>

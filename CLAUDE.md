@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Versions v0.1 through v0.12, v1.0.1 and v1.1 are implemented: capture + share, crop/rotate, brightness/contrast,
+Versions v0.1 through v0.12, v1.0.1, v1.1 and v1.2 are implemented: capture + share, crop/rotate, brightness/contrast,
 UI polish, multi-page PDFs, loupe previews while dragging, shear / perspective correction,
 auto-detect for frame and tone, pinch zoom in the captured and edit views, live document
 detection in the camera view with auto-bake on capture, sharing a single page as a JPEG, and the
-frozen still of the green moment for a shutter pressed right after it, the install button, and the
-DIN completion of a third detected edge for pages in a spiral block. The repository contains the product spec
+frozen still of the green moment for a shutter pressed right after it, the install button, the
+DIN completion of a third detected edge for pages in a spiral block, and the wide-angle lens
+switch in the camera view. The repository contains the product spec
 (`README.md`), design intent documents with per-version definitions, icons and mockups
 (`intent/`), and the TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -26,6 +27,11 @@ DIN completion of a third detected edge for pages in a spiral block. The reposit
   (`scripts/render-site.mjs`), filling the `{{IMPRINT_*}}` placeholders of the Impressum from the
   `IMPRINT_*` variables in `.env`. Contact data must never be committed; edit the template, not
   the output. Without a `.env` the placeholders from `.env.example` are used.
+- Diagnostics: `/app/diagnose.html` (`diagnose.html`, `src/diagnose.ts`, second Vite entry) starts
+  the rear camera and prints the track's settings and capabilities, the video input list (each
+  openable by tap) and the `probeLenses` result, for checking what a phone's browser exposes
+  without USB debugging. Excluded from the service worker precache, served `no-cache`. Not part
+  of the app shell; its text is not one of the app's text exceptions.
 - `npm test`: runs the Vitest suite (`test/**/*.test.ts`).
 - `npm run lint`: runs ESLint.
 - `npm run deploy`: builds, then runs `scripts/deploy.sh`, which copies `dist/` to
@@ -79,7 +85,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`, `intent/v1.0.1-install.md`, `intent/v1.1-din-completion.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`, `intent/v1.0.1-install.md`, `intent/v1.1-din-completion.md`, `intent/v1.2-wide-lens.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -168,6 +174,19 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   is still green and the live corners agree with the frozen ones within `AGREE_FRACTION`, else a
   fresh grab. The frozen still is released (width 0) with the window, on loss, toggle off,
   relayout and close. The shutter fires on `pointerdown`; the following click finds no session.
+- **Wide-angle lens (v1.2).** `probeLenses` (`src/camera.ts`) runs after the default stream
+  started and returns a `LensControl` or null: a zoom range below 1 on the running track
+  (`applyConstraints`, same stream; Android Chrome starts at 1, so this is for browsers that may)
+  first, else a second video input: one whose label contains "ultra" is the wide lens outright
+  (Safari on iOS), otherwise the other "facing back" inputs (Chrome on Android) are candidates
+  opened in turn on the first tap, and the fixed-focus one (`isFixedFocus`: no autofocus in
+  `focusMode`, the ultra-wide on Android phones, S22 camera 2) is kept for the session. Stop and
+  restart by `deviceId`. Null: the camera view renders no lens switch. The switch (`switchButton`, "Weitwinkel") sits left of the shutter,
+  is hidden while a switch is pending, and a switch releases the frozen still, restarts the
+  live loop and relays out the static frame from the new stream size. A failed select rejects
+  with `LensSwitchError` carrying the `fallback` session that still runs (the app resets the
+  choice, no notice) or null (error screen). `lens` in the app state is session state: every
+  camera open starts the default lens and then applies the remembered choice. Never persisted.
 - **Share.** Three compression levels (`src/quality.ts`); every page's frame region is encoded as
   JPEG in order and placed on a fixed A4 page scaled to fit (orientation follows the crop, borders
   on one axis accepted; `src/pdf.ts`), and one PDF goes to the Web Share API. With exactly one
@@ -209,7 +228,7 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   session; nothing is written to storage, and the service worker precaches only the app shell.
 
 Screens: start (with update and install buttons under the start button, and the iOS install help card) → camera (or camera error) → captured image [discard (trash can; removes the page, with one page the retake)] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
-Camera view: [back] top-left, [shutter] with the live-detect switch to its right, dashed outline (grey static frame or green detected document).
+Camera view: [back] top-left, [shutter] with the wide-angle switch to its left (only where a wide lens exists) and the live-detect switch to its right, dashed outline (grey static frame or green detected document).
 Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm], with loupes in the stage centre during drags. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [auto] [confirm].
 
 ## Version roadmap
@@ -217,4 +236,4 @@ Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm],
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
 v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom →
 v0.10 live detect → v0.11 share as JPEG → v0.12 frozen still → v1.0.0 release → v1.0.1 install
-button → v1.1 DIN completion → v1.2 wide-angle lens (planned). Each version is independently deployable. Do not pull features from a later version into an earlier one.
+button → v1.1 DIN completion → v1.2 wide-angle lens. Each version is independently deployable. Do not pull features from a later version into an earlier one.

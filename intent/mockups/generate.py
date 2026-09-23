@@ -45,6 +45,8 @@ ICON = {
     # v0.11
     "document": ("Share as PDF document", '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8"/><path d="M8 9h2"/>'),
     "image": ("Share as JPEG image", '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'),
+    # v1.2
+    "wide-angle": ("Wide-angle lens", '<circle cx="12" cy="17" r="3"/><path d="M10 14.5L3 5M14 14.5L21 5"/><path d="M3 5a14 14 0 0 1 18 0"/>'),
 }
 
 APP_ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
@@ -425,6 +427,20 @@ def live_detect():
             + btn("arrow-left", 48, 90, r=24, fill="#ffffff", stroke="#d1d5db", color="#111827", size=24))
     return body
 
+# ---- v1.2 ------------------------------------------------------------------
+def wide_lens():
+    """Camera view on the wide lens: a large sheet fits the frame, lens switch on left of the shutter."""
+    pts = [(70, 150), (322, 158), (330, 545), (60, 540)]
+    body = (f'<rect x="0" y="0" width="{W}" height="{H}" fill="#374151"/>'
+            + paper_quad(pts, bg="#fdfdf7")
+            + f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.15"/>'
+            + quad_frame(pts, color="#22c55e", handles=False)
+            + btn("shutter", W/2, 760, r=40, fill="#ffffff", stroke="#9ca3af", color="#1e40af", size=52)
+            + switch("wide-angle", W/2 - 110, 760)
+            + switch("magic-wand", W/2 + 110, 760)
+            + btn("arrow-left", 48, 90, r=24, fill="#ffffff", stroke="#d1d5db", color="#111827", size=24))
+    return body
+
 # ---- v0.11 -----------------------------------------------------------------
 def share_menu():
     """Single page: the share button opens a popover with PDF and image, anchored above the share button."""
@@ -461,6 +477,7 @@ SCREENS = [
     ("v0.9-01-zoom", "v0.9 Pinch zoom on the captured view", zoomed(), "#ffffff", "Pinch: the image zooms inside the stage, the bar stays put."),
     ("v0.10-01-live-detect", "v0.10 Live document detection", live_detect(), "#374151", "Document found: green outline on the page, detect switch on (switch since v0.12)."),
     ("v0.11-01-share-menu", "v0.11 Share popover with one page", share_menu(), "#ffffff", "One page: share opens PDF | image above the share button."),
+    ("v1.2-01-wide-lens", "v1.2 Wide-angle lens", wide_lens(), "#374151", "Wide lens on: switch left of the shutter, detect switch right; a large sheet fits the frame."),
 ]
 
 def main():

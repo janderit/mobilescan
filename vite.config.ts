@@ -63,6 +63,10 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     target: 'es2022',
+    rollupOptions: {
+      // diagnose.html: the camera diagnostics page (src/diagnose.ts), a developer aid.
+      input: ['index.html', 'diagnose.html'],
+    },
   },
   plugins: [
     // Only in dev: gives the local dev server https so phones on the LAN can
@@ -118,7 +122,8 @@ export default defineConfig(({ mode }) => ({
         // in-memory data must never be persisted (see CLAUDE.md "No retention").
         globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
         // version.json must always come from the network (see versionFile).
-        globIgnores: ['**/node_modules/**/*', 'version.json'],
+        // The diagnostics page is not part of the shell and always comes from the network.
+        globIgnores: ['**/node_modules/**/*', 'version.json', 'diagnose.html'],
         navigateFallback: '/app/index.html',
       },
     }),
