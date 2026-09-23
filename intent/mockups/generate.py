@@ -148,7 +148,7 @@ def camera():
             + f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.15"/>'
             + frame(fx, fy, fw, fh)
             + btn("shutter", W/2, 760, r=40, fill="#ffffff", stroke="#9ca3af", color="#1e40af", size=52)
-            + btn("arrow-left", 48, 90, r=24, fill="#111827", stroke="#111827", color="#ffffff", size=24))
+            + btn("arrow-left", 48, 90, r=24, fill="#ffffff", stroke="#d1d5db", color="#111827", size=24))
 
 def captured(extra=""):
     # only the frame area is shown, scaled to fit 350 wide
@@ -419,7 +419,7 @@ def live_detect():
             + quad_frame(pts, color="#22c55e", handles=False)
             + btn("shutter", W/2, 760, r=40, fill="#ffffff", stroke="#9ca3af", color="#1e40af", size=52)
             + switch("magic-wand", W/2 + 110, 760)
-            + btn("arrow-left", 48, 90, r=24, fill="#111827", stroke="#111827", color="#ffffff", size=24))
+            + btn("arrow-left", 48, 90, r=24, fill="#ffffff", stroke="#d1d5db", color="#111827", size=24))
     return body
 
 # ---- v0.11 -----------------------------------------------------------------

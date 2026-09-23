@@ -98,7 +98,7 @@ export class CameraView {
       outlineClass: 'camera-outline',
     });
     this.frameOverlay.visible = false;
-    const back = iconButton(icons.arrowLeft, 'Zurück', 'dark camera-back');
+    const back = iconButton(icons.arrowLeft, 'Zurück', 'camera-back');
     back.addEventListener('click', () => callbacks.onBack());
     const shutter = iconButton(icons.shutter, 'Foto aufnehmen', 'camera-shutter');
     // The still is grabbed on the press, not the release: the finger moves the
