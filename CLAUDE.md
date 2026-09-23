@@ -45,6 +45,13 @@ frozen still of the green moment for a shutter pressed right after it. The repos
   new worker once installed, and reloads on `controllerchange` (plain reload after 15 s as a
   fallback). The service worker uses `registerType: 'prompt'`, so a new worker waits instead of
   taking over a running scan; closing the app also lets it activate.
+- Install (v1.0.1): `src/install.ts` (`InstallPrompt` over an injectable `InstallEnvironment`,
+  `browserInstallEnvironment` reads the real window) tells the start page whether the app runs
+  standalone (`display-mode: standalone` or `navigator.standalone`) and, if not, how it can be
+  installed: `native` once Chrome fired `beforeinstallprompt` (kept and `prompt()`ed by the
+  install button, gone after use until Chrome fires again), `manual` on iOS (the button opens the
+  help card with the share sheet route, captions "Teilen" / "Zum Home-Bildschirm", the third text
+  exception), `none` elsewhere and after `appinstalled`. Session state only.
 
 Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
 (`render-icons.mjs`, `render-site.mjs`, `deploy.sh`), `public/` static files served as-is under
@@ -71,7 +78,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`, `intent/v1.0.1-install.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -86,7 +93,7 @@ Hard constraints from the spec that shape every design decision:
 - **Local only.** All image processing happens in the browser. No data leaves the device except via the OS share-to target the user picks. No server component exists and none should be added.
 - **Static hosting.** Deployed as static files to uberspace (https://mobilescan.app), served by Apache, copied via an scp script that reads `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env`. Anything that requires a backend or server-side rendering is out of scope.
 - **No retention.** After a successful share, the image is discarded. Do not add persistence (localStorage, IndexedDB, caches of scans). The service worker precaches the app shell only.
-- **Icons, not labels.** UI buttons carry icons only. The visible texts are the German start button "Dokument scannen" and, since the file icons alone proved unintuitive, the short captions "Klein / Mittel / Groß" under the compression icons in the share sheet. Accessibility labels are German `aria-label`s.
+- **Icons, not labels.** UI buttons carry icons only. The visible texts are the German start button "Dokument scannen", since the file icons alone proved unintuitive the short captions "Klein / Mittel / Groß" under the compression icons in the share sheet, and the two step captions of the iOS install help card. Accessibility labels are German `aria-label`s.
 - **Target browsers.** Modern mobile Safari and Chrome only. No desktop or file-input fallback for the camera.
 
 ## Core UX model (spec plus decisions)
@@ -194,7 +201,7 @@ the intent files hold the reasoning, the named constants in the code hold the nu
 - **No persistence.** Pages, frames, tones, zoom and the live-detect toggle live in memory for the
   session; nothing is written to storage, and the service worker precaches only the app shell.
 
-Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
+Screens: start (with update and install buttons under the start button, and the iOS install help card) → camera (or camera error) → captured image [back] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
 Camera view: [back] top-left, [shutter] with the live-detect switch to its right, dashed outline (grey static frame or green detected document).
 Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm], with loupes in the stage centre during drags. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [auto] [confirm].
 
@@ -202,4 +209,5 @@ Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm],
 
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
 v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom →
-v0.10 live detect → v0.11 share as JPEG → v0.12 frozen still. Each version is independently deployable. Do not pull features from a later version into an earlier one.
+v0.10 live detect → v0.11 share as JPEG → v0.12 frozen still → v1.0.0 release → v1.0.1 install
+button. Each version is independently deployable. Do not pull features from a later version into an earlier one.

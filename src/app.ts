@@ -20,6 +20,7 @@ import { cameraErrorKind, startCamera, stopCamera, type CameraErrorKind, type Ca
 import { buildJpegFile, buildPdfFile, shareFile } from './share';
 import type { UpdateChecker } from './update';
 import { UpdatePrompt } from './update-prompt';
+import { InstallPrompt, type InstallEnvironment } from './install';
 import { newPage } from './pages';
 import { Scan } from './scan';
 import { PageFlow } from './page-flow';
@@ -48,6 +49,8 @@ interface State {
   shareMenuOpen: boolean;
   sheetOpen: boolean;
   menuOpen: boolean;
+  /** The iOS install help over the start page. */
+  installHelpOpen: boolean;
   /** What the sheet's confirm produces; chosen in the share popover, PDF with several pages. */
   format: ShareFormat;
   level: CompressionLevel;
@@ -65,7 +68,16 @@ export interface AppOptions {
   build: string;
   /** Update check for the start page; omitted in tests that do not care. */
   updates?: UpdateChecker;
+  /** How the start page learns whether and how the app can be installed; omitted: never. */
+  install?: InstallEnvironment;
 }
+
+/** An environment that never offers an install (tests, and callers without one). */
+const NO_INSTALL: InstallEnvironment = {
+  isStandalone: () => true,
+  isIOS: () => false,
+  addEventListener: () => {},
+};
 
 export class App {
   private readonly state: State = {
@@ -73,6 +85,7 @@ export class App {
     shareMenuOpen: false,
     sheetOpen: false,
     menuOpen: false,
+    installHelpOpen: false,
     format: 'pdf',
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
@@ -101,18 +114,22 @@ export class App {
   private readonly overlays: Overlays;
   private readonly backTrap: BackTrap;
   private readonly updatePrompt: UpdatePrompt;
+  private readonly installPrompt: InstallPrompt;
 
   /** Detaches the window/document listeners on dispose(). */
   private readonly listeners = new AbortController();
 
   constructor(root: HTMLElement, options: AppOptions) {
     this.updatePrompt = new UpdatePrompt(options.updates ?? null, () => this.render());
+    this.installPrompt = new InstallPrompt(options.install ?? NO_INSTALL, () => this.render(), this.listeners.signal);
     this.overlays = new Overlays(() => this.render());
     this.pages = new PageFlow(this.scan, this.overlays);
 
     this.startView = new StartView(options, {
       onStart: () => void this.openCamera(),
       onUpdate: () => void this.applyUpdate(),
+      onInstall: () => void this.install(),
+      onCloseInstallHelp: () => this.closeInstallHelp(),
     });
     this.cameraView = new CameraView({
       onBack: () => this.closeCamera(),
@@ -251,9 +268,13 @@ export class App {
   // ---- rendering -------------------------------------------------------
 
   private render(): void {
-    const { screen, shareMenuOpen, sheetOpen, menuOpen, level, cameraError } = this.state;
+    const { screen, shareMenuOpen, sheetOpen, menuOpen, installHelpOpen, level, cameraError } = this.state;
     this.switcher.show(screen);
-    this.startView.render({ updateAvailable: this.updatePrompt.available });
+    this.startView.render({
+      updateAvailable: this.updatePrompt.available,
+      installMode: this.installPrompt.mode,
+      installHelpOpen,
+    });
     this.errorView.render({ kind: cameraError });
     this.capturedView.render({
       active: screen === 'captured',
@@ -278,6 +299,7 @@ export class App {
     this.state.shareMenuOpen = false;
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
+    this.state.installHelpOpen = false;
     this.render();
     if (screen === 'start') this.updatePrompt.check();
   }
@@ -348,6 +370,30 @@ export class App {
     if (!this.updatePrompt.enabled || this.busy) return;
     // The update yields on its own, so the spinner shows without waiting for a paint.
     await this.overlays.run(() => this.updatePrompt.apply(), 'Aktualisierung fehlgeschlagen', { paint: false });
+  }
+
+  // ---- install ---------------------------------------------------------
+
+  /** Native prompt where the browser offers one, the help overlay on iOS. */
+  private async install(): Promise<void> {
+    if (this.busy) return;
+    switch (this.installPrompt.mode) {
+      case 'native':
+        await this.installPrompt.prompt();
+        break;
+      case 'manual':
+        this.state.installHelpOpen = true;
+        this.render();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private closeInstallHelp(): void {
+    if (!this.state.installHelpOpen) return;
+    this.state.installHelpOpen = false;
+    this.render();
   }
 
   // ---- camera ----------------------------------------------------------

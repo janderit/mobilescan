@@ -3,6 +3,7 @@
 import './styles.css';
 import { App } from './app';
 import { UpdateService } from './update';
+import { browserInstallEnvironment } from './install';
 
 const root = document.getElementById('app');
 if (!root) {
@@ -10,4 +11,4 @@ if (!root) {
 }
 const current = { version: __APP_VERSION__, build: __APP_BUILD__ };
 const updates = new UpdateService({ current, url: `${import.meta.env.BASE_URL}version.json` });
-new App(root, { ...current, updates });
+new App(root, { ...current, updates, install: browserInstallEnvironment() });

@@ -175,12 +175,89 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 24px;
   height: 64px;
 }
 
 /* .icon-button sets display, which would otherwise override the hidden attribute. */
-.update-button[hidden] {
+.update-button[hidden],
+.install-button[hidden] {
   display: none;
+}
+
+/* Install help (iOS): a card over the start page with the two steps of the
+   share sheet route. The captions are a text exception, since there is no
+   install API on iOS and the icons alone would not explain the route. */
+
+.install-help {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.install-help[hidden] {
+  display: none;
+}
+
+.install-help-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: min(100%, 320px);
+  padding: 24px 24px 20px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  animation: pop-in var(--fade) ease-out;
+}
+
+.install-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.install-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 17px;
+}
+
+.install-step::before {
+  counter-increment: step;
+  content: counter(step);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 28px;
+  text-align: center;
+}
+
+.install-step-icon {
+  display: flex;
+  color: var(--primary);
+}
+
+.install-step-icon svg {
+  width: 32px;
+  height: 32px;
 }
 
 .app-version {
@@ -784,6 +861,7 @@ button {
 
   .screen.entering,
   .popover,
+  .install-help-card,
   .notice,
   .flash.active {
     animation: none;

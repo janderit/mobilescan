@@ -232,7 +232,7 @@ describe('App updates', () => {
 
   it('hides the update button with a stylesheet rule, not only the attribute', () => {
     const css = readFileSync('src/styles.css', 'utf8');
-    expect(css).toMatch(/\.update-button\[hidden\]\s*\{\s*display:\s*none;/);
+    expect(css).toMatch(/\.update-button\[hidden\],\s*\.install-button\[hidden\]\s*\{\s*display:\s*none;/);
   });
 
   it('keeps the button hidden without an update and without a checker', async () => {
