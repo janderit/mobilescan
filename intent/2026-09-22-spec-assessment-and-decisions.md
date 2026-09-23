@@ -73,7 +73,7 @@ Taken with Philip when the four follow-up milestones were defined
 | Crop and shear merged | One mode with the shear icon, the default of the view: corner handles shear, edge handles crop, the frame body is not draggable. Found in the first device test of v0.7: a separate crop-corner drag and the one-finger pan added nothing that corners and edges cannot do, and three segments squeezed the bar. |
 | Shear bake result | The whole image is warped and the margins kept (like rotation baking), output bounded to the target rectangle plus 25 % per side and the pixel cap. Not cropped to the quadrilateral. |
 | Warp engine | JavaScript pixel loop with bilinear sampling, strips of 256 rows. No WebGL: one code path, testable, no texture limits. Budget 3 s for 16 MP behind the busy overlay. |
-| Edge search band | 5 % outside to 20 % inside each frame edge. Mostly inward as requested; the small outward band covers paper that extends past the 90 % capture frame. |
+| Edge search band | 10 % outside to 20 % inside each frame edge (2026-09-23; 5 % outside to 15 % inside before, widened so the live detection turns green more readily). Mostly inward as requested; the outward band covers paper that extends past the 90 % capture frame. |
 | Contrast range | Widened to 0.5 .. 4.0 so auto can reach full black and white; slider mapping piecewise-linear with neutral at the centre tick. |
 | Auto feedback | Nothing found: brief warning icon (v0.4 notice), state unchanged. Partial results applied. Auto results are pending edits, back discards them. |
 | Auto button placement | In the button bar left of confirm in both edit views; falls back to the stage's top-right corner if seven targets do not fit on 360 px. |

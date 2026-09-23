@@ -208,7 +208,7 @@ describe('frame detection', () => {
   it('ignores a paper edge 30 % inside the frame and reports nothing found', () => {
     const small: Frame = { cx: 600, cy: 800, width: 400, height: 560, angle: 0 };
     const frame: Frame = { cx: 600, cy: 800, width: 1000, height: 1400, angle: 0 };
-    // 30 % of the frame size on each side, well past the 15 % band.
+    // 30 % of the frame size on each side, well past the 20 % band.
     expect((frame.width - small.width) / 2 / frame.width).toBeGreaterThan(BAND_INSIDE);
     expect(detect(frame, paperScene(small))).toBeNull();
   });

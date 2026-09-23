@@ -5,7 +5,7 @@
  * the glue in detect.ts render the working copies (see `sampleImage` in
  * canvas.ts).
  *
- * Each frame edge is searched in a band from 15 % inside to 5 % outside: the
+ * Each frame edge is searched in a band from 20 % inside to 10 % outside: the
  * bright-to-dark transition (paper to table) nearest to the frame line, inside
  * the frame first and only then outside, along every fourth sample line gives
  * one point, a repeated-median line fit makes the edge robust to text and
@@ -22,9 +22,9 @@ import { luminance } from './color';
 /** Longer frame side of the working image for edge detection, in pixels. */
 export const DETECT_LONG_SIDE = 800;
 /** Search band outside the frame edge, as a fraction of the frame size on that axis. */
-export const BAND_OUTSIDE = 0.05;
+export const BAND_OUTSIDE = 0.1;
 /** Search band inside the frame edge, as a fraction of the frame size on that axis. */
-export const BAND_INSIDE = 0.15;
+export const BAND_INSIDE = 0.2;
 /** Distance between sample lines along an edge, in working pixels. */
 export const SAMPLE_SPACING = 4;
 /** A sample counts as an inlier of the fitted line within this distance (working pixels). */
@@ -169,7 +169,7 @@ export function repeatedMedianLine(samples: readonly { t: number; u: number }[])
  * Samples one edge: on every `SAMPLE_SPACING`-th line along the edge, the
  * position across the band of the significant bright-to-dark transition
  * seen from the inside that lies nearest to the frame line, searching the
- * inside of the frame first and the 5 % outside only when the inside holds
+ * inside of the frame first and the 10 % outside only when the inside holds
  * none (3-pixel box blur along the edge, central difference across,
  * parabolic sub-pixel peak). Only the paper-to-table direction counts: a
  * dark-to-bright step further out is the table's edge against the
