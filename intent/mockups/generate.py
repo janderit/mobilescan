@@ -40,6 +40,9 @@ ICON = {
     "shear": ("Shear mode (independent corners)", '<path d="M5 7l14-4v18L5 17z"/><circle cx="5" cy="7" r="1.6" fill="currentColor"/><circle cx="19" cy="3" r="1.6" fill="currentColor"/><circle cx="19" cy="21" r="1.6" fill="currentColor"/><circle cx="5" cy="17" r="1.6" fill="currentColor"/>'),
     # v0.8
     "magic-wand": ("Auto-detect", '<path d="M3 21l11-11"/><path d="M14 10l-2-2 2-2 2 2z" fill="currentColor"/><path d="M17 3v4M15 5h4M20 12v3M18.5 13.5h3M9 2v2M8 3h2"/>'),
+    # v0.11
+    "document": ("Share as PDF document", '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8"/><path d="M8 9h2"/>'),
+    "image": ("Share as JPEG image", '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'),
 }
 
 APP_ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
@@ -411,6 +414,16 @@ def live_detect():
             + btn("arrow-left", 48, 90, r=24, fill="#111827", stroke="#111827", color="#ffffff", size=24))
     return body
 
+# ---- v0.11 -----------------------------------------------------------------
+def share_menu():
+    """Single page: the share button opens a popover with PDF and image, anchored above the share button."""
+    menu = (f'<rect x="0" y="0" width="{W}" height="{H}" fill="#000" opacity="0.25"/>'
+            f'<rect x="77" y="620" width="140" height="72" rx="20" fill="#ffffff" stroke="#d1d5db"/>'
+            f'<path d="M147 708l-10-16h20z" fill="#ffffff" stroke="#d1d5db"/><rect x="138" y="690" width="18" height="4" fill="#ffffff"/>'
+            + btn("document", 115, 656, r=26) + btn("image", 179, 656, r=26)
+            + btn("share", 147, BAR, **PRIMARY))
+    return captured_v05(1, 1) + menu
+
 SCREENS = [
     ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app."),
     ("v0.1-02-camera", "v0.1 Camera with DIN frame", camera(), "#374151", "Camera: dashed DIN A frame at 90 % width, shutter below."),
@@ -436,6 +449,7 @@ SCREENS = [
     ("v0.8-02-auto-tone", "v0.8 Auto black-and-white", auto_tone(), "#ffffff", "After [auto]: grayscale on, contrast raised, wand in the bar."),
     ("v0.9-01-zoom", "v0.9 Pinch zoom on the captured view", zoomed(), "#ffffff", "Pinch: the image zooms inside the stage, the bar stays put."),
     ("v0.10-01-live-detect", "v0.10 Live document detection", live_detect(), "#374151", "Document found: green outline on the page, wand toggle on."),
+    ("v0.11-01-share-menu", "v0.11 Share popover with one page", share_menu(), "#ffffff", "One page: share opens PDF | image above the share button."),
 ]
 
 def main():

@@ -114,3 +114,17 @@ the document while aiming, and the capture should apply the shear correction on 
 | Automatic capture | Not in v0.10. The shutter is an explicit act in the spec; after [+] the camera opens on the same sheet still on the table and would capture it again; the user gets no moment to check framing and light before pixels are resampled. If wanted later: a hold timer with a countdown ring on the shutter, toggle becomes three-state. |
 | Loop | `requestVideoFrameCallback` (fallback `requestAnimationFrame`), at most one run per 150 ms, budget 15 ms per run, stops with the stream and with the toggle. Main thread only, no worker or WebGL. |
 
+## v0.11 decisions (2026-09-23, share as JPEG)
+
+Taken with Philip when v0.11 was added, from a user request: a single scanned page should also
+be shareable as an image, not only as a PDF (`v0.11-share-jpeg.md`).
+
+| Topic | Decision |
+|---|---|
+| When | Only while the scan has exactly one page. With two or more pages the share button opens the sheet for the PDF at once, as before: several JPEGs make no single document, and the Web Share API's multi-file support is uneven across targets. |
+| How | The share button opens a popover like the edit submenu, with two icons: document (PDF) and image (JPEG). Both continue with the unchanged share sheet, so the compression level applies to the JPEG as well. Two more taps only in the single-page case; the choice is icon-only, in line with the spec. |
+| Encoding | The JPEG is the frame region at the chosen level, the same bytes the PDF would embed, named `scan-<stamp>.jpg` with MIME `image/jpeg`. No A4 page around it, no borders. |
+| Outcome | As for the PDF: success returns to the start page and discards the page, cancel keeps it, failure shows the notice. The chosen format is session state, not persisted. |
+| Popover position | The edit popover sat at a fixed offset from the right edge, which was right for the three-button bar of v0.2 but put it above [+] since v0.5. Both popovers are now anchored above their own button: the view measures the button on render and writes its centre into `--anchor-x`, the CSS centres the popover and its tip on it. |
+| Icons | Two new 24x24 stroke icons, `document` and `image`, generated like the others. The share button keeps the share icon. |
+

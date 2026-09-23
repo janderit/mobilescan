@@ -80,8 +80,13 @@ function pad(value: number, length = 2): string {
 
 /** `scan-YYYYMMDD-HHMMSS.pdf` in local time. */
 export function pdfFileName(date: Date): string {
+  return scanFileName(date, 'pdf');
+}
+
+/** `scan-YYYYMMDD-HHMMSS.<extension>` in local time. */
+export function scanFileName(date: Date, extension: string): string {
   const stamp =
     `${pad(date.getFullYear(), 4)}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
     `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-  return `scan-${stamp}.pdf`;
+  return `scan-${stamp}.${extension}`;
 }

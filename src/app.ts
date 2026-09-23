@@ -1,6 +1,6 @@
 /**
  * MobileScan app shell: start -> camera (or camera error) -> captured ->
- * (share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
+ * (share popover -> share sheet | edit popover -> crop/rotate | brightness/contrast | [+] camera) -> busy.
  * One in-memory state machine, plain DOM, no persistence. A scan is a list of
  * pages of which only the current one holds a full-resolution canvas.
  *
@@ -12,12 +12,12 @@
  * the view is entered.
  */
 
-import type { CompressionLevel, Frame, Page } from './model';
+import type { CompressionLevel, Frame, Page, ShareFormat } from './model';
 import { el, prefersReducedMotion } from './ui';
 import { initialFrame, scaleFrame } from './geometry';
 import { DEFAULT_COMPRESSION } from './quality';
 import { cameraErrorKind, captureStill, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
-import { buildPdfFile, sharePdf } from './share';
+import { buildJpegFile, buildPdfFile, shareFile } from './share';
 import type { UpdateChecker } from './update';
 import { UpdatePrompt } from './update-prompt';
 import { newPage } from './pages';
@@ -44,8 +44,12 @@ type CameraOrigin = 'start' | 'captured';
 
 interface State {
   screen: Screen;
+  /** The share popover (PDF | image); opens only while the scan has one page. */
+  shareMenuOpen: boolean;
   sheetOpen: boolean;
   menuOpen: boolean;
+  /** What the sheet's confirm produces; chosen in the share popover, PDF with several pages. */
+  format: ShareFormat;
   level: CompressionLevel;
   cameraError: CameraErrorKind;
   cameraOrigin: CameraOrigin;
@@ -66,8 +70,10 @@ export interface AppOptions {
 export class App {
   private readonly state: State = {
     screen: 'start',
+    shareMenuOpen: false,
     sheetOpen: false,
     menuOpen: false,
+    format: 'pdf',
     level: DEFAULT_COMPRESSION,
     cameraError: 'unavailable',
     cameraOrigin: 'start',
@@ -119,7 +125,10 @@ export class App {
     });
     this.capturedView = new CapturedView({
       onBack: () => void this.backFromCaptured(),
-      onShare: () => this.openSheet(),
+      onShare: () => this.share(),
+      onCloseShareMenu: () => this.closeShareMenu(),
+      onSharePdf: () => this.openSheet('pdf'),
+      onShareImage: () => this.openSheet('jpeg'),
       onSelectLevel: (level) => this.selectLevel(level),
       onCloseSheet: () => this.closeSheet(),
       onConfirmShare: () => void this.confirmShare(),
@@ -242,7 +251,7 @@ export class App {
   // ---- rendering -------------------------------------------------------
 
   private render(): void {
-    const { screen, sheetOpen, menuOpen, level, cameraError } = this.state;
+    const { screen, shareMenuOpen, sheetOpen, menuOpen, level, cameraError } = this.state;
     this.switcher.show(screen);
     this.startView.render({ updateAvailable: this.updatePrompt.available });
     this.errorView.render({ kind: cameraError });
@@ -251,6 +260,7 @@ export class App {
       count: this.scan.count,
       current: this.scan.currentIndex,
       isFull: this.scan.isFull,
+      shareMenuOpen,
       menuOpen,
       sheetOpen,
       level,
@@ -265,6 +275,7 @@ export class App {
    */
   private showScreen(screen: Screen): void {
     this.state.screen = screen;
+    this.state.shareMenuOpen = false;
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
     this.render();
@@ -302,6 +313,7 @@ export class App {
         break;
       case 'captured':
         if (this.state.sheetOpen) this.closeSheet();
+        else if (this.state.shareMenuOpen) this.closeShareMenu();
         else if (this.state.menuOpen) this.closeMenu();
         else void this.backFromCaptured();
         break;
@@ -448,6 +460,7 @@ export class App {
    */
   private async backFromCaptured(): Promise<void> {
     if (this.busy) return;
+    this.state.shareMenuOpen = false;
     this.state.sheetOpen = false;
     this.state.menuOpen = false;
     if (this.scan.count <= 1) {
@@ -464,6 +477,7 @@ export class App {
   /** [+]: park the current page and open the camera for the next one. */
   private async addPage(): Promise<void> {
     if (this.busy || this.scan.isFull || !this.scan.currentPage()) return;
+    this.state.shareMenuOpen = false;
     this.state.menuOpen = false;
     this.state.sheetOpen = false;
     if (!(await this.pages.parkCurrent())) return; // parking failed; stay on the page
@@ -497,8 +511,29 @@ export class App {
 
   // ---- sheet and popover -----------------------------------------------
 
-  private openSheet(): void {
+  /**
+   * The share button. With one page the format is the user's choice, so the
+   * popover asks PDF or image; with several pages only the PDF makes sense
+   * and the sheet opens at once.
+   */
+  private share(): void {
+    if (this.scan.count > 1) {
+      this.openSheet('pdf');
+      return;
+    }
+    this.state.shareMenuOpen = !this.state.shareMenuOpen;
+    this.render();
+  }
+
+  private closeShareMenu(): void {
+    this.state.shareMenuOpen = false;
+    this.render();
+  }
+
+  private openSheet(format: ShareFormat): void {
+    this.state.format = format;
     this.state.level = DEFAULT_COMPRESSION;
+    this.state.shareMenuOpen = false;
     this.state.sheetOpen = true;
     this.render();
   }
@@ -527,7 +562,7 @@ export class App {
     if (this.scan.count === 0 || this.busy) return;
     // Encoding and sharing yield on their own, so the spinner shows without waiting for a paint.
     const outcome = await this.overlays.run(
-      async () => sharePdf(await buildPdfFile(this.scan.list, this.state.level)),
+      async () => shareFile(await this.buildShareFile()),
       'Teilen fehlgeschlagen',
       { paint: false },
     );
@@ -537,6 +572,15 @@ export class App {
     }
     this.state.sheetOpen = false;
     this.render();
+  }
+
+  /** The file the sheet's confirm shares: a JPEG of the single page, or the PDF of all. */
+  private buildShareFile(): Promise<File> {
+    const page = this.scan.currentPage();
+    if (this.state.format === 'jpeg' && this.scan.count === 1 && page) {
+      return buildJpegFile(page, this.state.level);
+    }
+    return buildPdfFile(this.scan.list, this.state.level);
   }
 
   // ---- edit views ------------------------------------------------------

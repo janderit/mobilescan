@@ -418,7 +418,8 @@ button {
   padding: 16px calc(16px + var(--safe-right)) calc(24px + var(--safe-bottom)) calc(16px + var(--safe-left));
 }
 
-/* Edit popover (captured view) */
+/* Popovers (captured view): share PDF | image, and edit. `--anchor-x` is the
+   centre of the opening button within the screen, set by the view. */
 
 .popover-backdrop {
   position: absolute;
@@ -432,9 +433,10 @@ button {
 
 .popover {
   position: absolute;
-  transform-origin: calc(100% - 48px) 100%;
+  left: var(--anchor-x, 50%);
+  translate: -50% 0;
+  transform-origin: 50% 100%;
   animation: pop-in var(--fade) ease-out;
-  right: calc(20px + var(--safe-right));
   bottom: calc(112px + var(--safe-bottom));
   display: flex;
   gap: 12px;
@@ -449,7 +451,7 @@ button {
   content: '';
   position: absolute;
   bottom: -9px;
-  right: 40px;
+  left: calc(50% - 8px);
   width: 16px;
   height: 16px;
   border-right: 1px solid var(--border);

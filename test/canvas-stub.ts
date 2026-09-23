@@ -22,6 +22,8 @@ export function tinyJpeg(): Uint8Array<ArrayBuffer> {
 export interface CanvasStub {
   /** Number of `toBlob` calls so far. */
   readonly encodeCount: number;
+  /** The quality argument of the last `toBlob` call, if any. */
+  readonly lastQuality: number | undefined;
   restore(): void;
 }
 
@@ -60,6 +62,7 @@ function fakeContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 /** Installs the stubs; call `restore()` in afterEach. */
 export function stubCanvas(): CanvasStub {
   let encodeCount = 0;
+  let lastQuality: number | undefined;
   const contexts = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>();
   const getContext = vi
     .spyOn(HTMLCanvasElement.prototype, 'getContext')
@@ -73,8 +76,14 @@ export function stubCanvas(): CanvasStub {
     } as unknown as typeof HTMLCanvasElement.prototype.getContext);
   const toBlob = vi
     .spyOn(HTMLCanvasElement.prototype, 'toBlob')
-    .mockImplementation(function (this: HTMLCanvasElement, callback: BlobCallback) {
+    .mockImplementation(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+      _type?: string,
+      quality?: unknown,
+    ) {
       encodeCount += 1;
+      lastQuality = typeof quality === 'number' ? quality : undefined;
       const bytes = tinyJpeg();
       setTimeout(() => callback(new Blob([bytes], { type: 'image/jpeg' })), 0);
     });
@@ -82,6 +91,9 @@ export function stubCanvas(): CanvasStub {
   return {
     get encodeCount() {
       return encodeCount;
+    },
+    get lastQuality() {
+      return lastQuality;
     },
     restore() {
       getContext.mockRestore();

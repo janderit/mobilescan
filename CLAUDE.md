@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Versions v0.1 through v0.10 are implemented: capture + share, crop/rotate, brightness/contrast,
+Versions v0.1 through v0.11 are implemented: capture + share, crop/rotate, brightness/contrast,
 UI polish, multi-page PDFs, loupe previews while dragging, shear / perspective correction,
-auto-detect for frame and tone, pinch zoom in the captured and edit views, and live document
-detection in the camera view with auto-bake on capture. The repository contains the product spec
+auto-detect for frame and tone, pinch zoom in the captured and edit views, live document
+detection in the camera view with auto-bake on capture, and sharing a single page as a JPEG. The repository contains the product spec
 (`README.md`), design intent documents with per-version definitions, icons and mockups
 (`intent/`), and the TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -70,7 +70,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.10-live-detect.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.11-share-jpeg.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -150,8 +150,14 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   outline was green. The live result is never used for the bake. There is no automatic capture.
 - **Share.** Three compression levels (`src/quality.ts`); every page's frame region is encoded as
   JPEG in order and placed on a fixed A4 page scaled to fit (orientation follows the crop, borders
-  on one axis accepted; `src/pdf.ts`), and one PDF goes to the Web Share API. Success returns to
+  on one axis accepted; `src/pdf.ts`), and one PDF goes to the Web Share API. With exactly one
+  page the share button first opens a popover (PDF | image) above itself; image shares the frame
+  region's JPEG itself (`buildJpegFile`, same encoder and levels, `scan-<stamp>.jpg`) after the
+  same sheet. With several pages share opens the sheet for the PDF directly. The format is
+  session state (`format` in the app state), never persisted. Success returns to
   the start page and discards every page; cancel keeps the captured view; failure shows the notice.
+  Both popovers of the captured view are anchored above their button (`--anchor-x`, measured on
+  render), not at a fixed offset from the right edge.
 - **Multi-page memory rule.** A scan is a list of pages (`src/scan.ts`, `src/pages.ts`) of which
   only the current one holds a full-resolution canvas; the others are parked as full-image JPEG
   blobs and woken behind the busy overlay. A page is re-encoded only when a bake changed it
@@ -175,14 +181,14 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   current screen's back button (`src/navigation.ts`), so hardware back never leaves the app
   mid-scan. Camera failures show the icon-only error screen whose status label names the cause.
   Backgrounding the page stops the camera stream and returning restarts it.
-- **Motion.** Screens cross-fade in `FADE_MS` (written to `--fade` on the root), the popover scales
-  in from the edit button, a white flash plus vibration confirms the shutter, the live outline's
+- **Motion.** Screens cross-fade in `FADE_MS` (written to `--fade` on the root), the popovers scale
+  in from their button, a white flash plus vibration confirms the shutter, the live outline's
   colour transitions; all off under `prefers-reduced-motion`. Notices show the warning icon for
   `NOTICE_MS` over the current view.
 - **No persistence.** Pages, frames, tones, zoom and the live-detect toggle live in memory for the
   session; nothing is written to storage, and the service worker precaches only the app shell.
 
-Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → edit popover (crop/rotate, brightness/contrast).
+Screens: start → camera (or camera error) → captured image [back] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
 Camera view: [back] top-left, [shutter] with the live-detect toggle to its right, dashed outline (grey static frame or green detected document).
 Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm], with loupes in the stage centre during drags. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [auto] [confirm].
 
@@ -190,4 +196,4 @@ Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm],
 
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
 v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom →
-v0.10 live detect. Each version is independently deployable. Do not pull features from a later version into an earlier one.
+v0.10 live detect → v0.11 share as JPEG. Each version is independently deployable. Do not pull features from a later version into an earlier one.

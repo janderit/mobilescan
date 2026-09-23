@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
-import { A4, buildPdf, pageLayout, pdfFileName } from '../src/pdf';
+import { A4, buildPdf, pageLayout, pdfFileName, scanFileName } from '../src/pdf';
 import { SQRT2 } from '../src/geometry';
 
 /** A minimal valid baseline JPEG, 1 x 1 pixel. */
@@ -137,5 +137,11 @@ describe('pdfFileName', () => {
 
   it('matches the expected shape for the current time', () => {
     expect(pdfFileName(new Date())).toMatch(/^scan-\d{8}-\d{6}\.pdf$/);
+  });
+});
+
+describe('scanFileName', () => {
+  it('uses the same stamp with another extension', () => {
+    expect(scanFileName(new Date(2026, 8, 22, 14, 5, 9), 'jpg')).toBe('scan-20260922-140509.jpg');
   });
 });

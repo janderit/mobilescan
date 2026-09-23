@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sharePdf } from '../src/share';
+import { shareFile } from '../src/share';
 
 const file = new File([new Uint8Array([1, 2, 3])], 'scan.pdf', { type: 'application/pdf' });
 
@@ -9,7 +9,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('sharePdf', () => {
+describe('shareFile', () => {
   it('downloads when the browser cannot share files', async () => {
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
     const createUrl = vi.fn(() => 'blob:test');
@@ -22,7 +22,7 @@ describe('sharePdf', () => {
       expect(this.href).toBe('blob:test');
     });
 
-    await expect(sharePdf(file)).resolves.toBe('shared');
+    await expect(shareFile(file)).resolves.toBe('shared');
     expect(createUrl).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledTimes(1);
   });
@@ -33,7 +33,7 @@ describe('sharePdf', () => {
       value: () => Promise.reject(new DOMException('cancelled', 'AbortError')),
       configurable: true,
     });
-    await expect(sharePdf(file)).resolves.toBe('aborted');
+    await expect(shareFile(file)).resolves.toBe('aborted');
   });
 
   it('rethrows other share failures', async () => {
@@ -42,6 +42,6 @@ describe('sharePdf', () => {
       value: () => Promise.reject(new TypeError('boom')),
       configurable: true,
     });
-    await expect(sharePdf(file)).rejects.toThrow('boom');
+    await expect(shareFile(file)).rejects.toThrow('boom');
   });
 });

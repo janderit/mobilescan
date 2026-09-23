@@ -86,3 +86,6 @@ export const MAX_PAGES = 20;
 
 /** Compression levels of the share sheet. */
 export type CompressionLevel = 'small' | 'medium' | 'large';
+
+/** What the share sheet produces: the PDF of all pages, or the single page as a JPEG. */
+export type ShareFormat = 'pdf' | 'jpeg';

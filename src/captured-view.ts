@@ -1,11 +1,14 @@
 /**
  * Captured screen: the page header ([previous] "n/m" [next]), the current
  * page's frame region on a zoomable `FrameStage`, the button
- * bar (back, share, edit, [+]), the edit popover and the share sheet with the
- * three-level compression control. Pure presentation: the app shell keeps the
- * open flags and the level in its state and hands them to `render`; every
+ * bar (back, share, edit, [+]), the share popover (PDF | image, single page
+ * only), the edit popover and the share sheet with the three-level
+ * compression control. Pure presentation: the app shell keeps the open flags,
+ * the format and the level in its state and hands them to `render`; every
  * button reports to a callback. A one-finger swipe over the fitted image
  * reports its direction; the shell decides whether to change the page.
+ * Each popover is anchored above its button: `render` measures the button
+ * and writes its centre to `--anchor-x` on the popover.
  */
 
 import * as icons from './icons';
@@ -34,6 +37,30 @@ const LEVEL_CAPTIONS: Record<CompressionLevel, string> = {
   large: 'Groß',
 };
 
+/** A popover of compact menu items inside its backdrop; a tap on the backdrop closes it. */
+function popover(
+  label: string,
+  items: HTMLButtonElement[],
+  onClose: () => void,
+): { backdrop: HTMLElement; menu: HTMLElement } {
+  for (const item of items) item.setAttribute('role', 'menuitem');
+  const menu = el('div', 'popover', ...items);
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', label);
+  const backdrop = el('div', 'popover-backdrop', menu);
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) onClose();
+  });
+  return { backdrop, menu };
+}
+
+/** Places the popover's tip under the centre of `anchor`, measured within `within`. */
+function anchorPopover(menu: HTMLElement, anchor: HTMLElement, within: HTMLElement): void {
+  const button = anchor.getBoundingClientRect();
+  const screen = within.getBoundingClientRect();
+  menu.style.setProperty('--anchor-x', `${button.left + button.width / 2 - screen.left}px`);
+}
+
 /** Disabled look and no action, without removing the button from the focus order. */
 function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
   button.setAttribute('aria-disabled', String(disabled));
@@ -43,8 +70,13 @@ function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
 export interface CapturedViewCallbacks {
   /** Back button. */
   onBack: () => void;
-  /** Share button: open the sheet. */
+  /** Share button: open the share popover or the sheet. */
   onShare: () => void;
+  /** A tap on the share popover backdrop. */
+  onCloseShareMenu: () => void;
+  /** Share popover items. */
+  onSharePdf: () => void;
+  onShareImage: () => void;
   /** A compression level was tapped in the sheet. */
   onSelectLevel: (level: CompressionLevel) => void;
   /** Sheet cancel or a tap on its backdrop. */
@@ -73,6 +105,7 @@ export interface CapturedViewState {
   current: number;
   /** At the page limit: [+] is disabled. */
   isFull: boolean;
+  shareMenuOpen: boolean;
   menuOpen: boolean;
   sheetOpen: boolean;
   level: CompressionLevel;
@@ -83,8 +116,12 @@ export class CapturedView {
   /** The zoomable stage showing the current page's frame region. */
   readonly stage: FrameStage;
 
+  private readonly shareMenuBackdrop: HTMLElement;
+  private readonly shareMenu: HTMLElement;
   private readonly menuBackdrop: HTMLElement;
+  private readonly menu: HTMLElement;
   private readonly sheetBackdrop: HTMLElement;
+  private readonly shareButton: HTMLButtonElement;
   private readonly editButton: HTMLButtonElement;
   private readonly addButton: HTMLButtonElement;
   private readonly pageHeader: HTMLElement;
@@ -111,8 +148,8 @@ export class CapturedView {
     });
     const back = iconButton(icons.arrowLeft, 'Zurück');
     back.addEventListener('click', () => callbacks.onBack());
-    const shareButton = iconButton(icons.share, 'Teilen', 'primary');
-    shareButton.addEventListener('click', () => callbacks.onShare());
+    this.shareButton = iconButton(icons.share, 'Teilen', 'primary');
+    this.shareButton.addEventListener('click', () => callbacks.onShare());
     this.editButton = iconButton(icons.edit, 'Bearbeiten');
     this.editButton.setAttribute('aria-haspopup', 'menu');
     this.editButton.addEventListener('click', () => callbacks.onToggleMenu());
@@ -129,20 +166,27 @@ export class CapturedView {
     this.pageHeader = el('div', 'page-header', this.previousButton, this.pagePosition, this.nextButton);
     this.pageHeader.hidden = true;
 
+    // Share popover (single page only): PDF, image.
+    const pdfItem = iconButton(icons.document, 'Als PDF teilen', 'compact');
+    pdfItem.addEventListener('click', () => callbacks.onSharePdf());
+    const imageItem = iconButton(icons.image, 'Als Bild teilen', 'compact');
+    imageItem.addEventListener('click', () => callbacks.onShareImage());
+    ({ backdrop: this.shareMenuBackdrop, menu: this.shareMenu } = popover(
+      'Teilen',
+      [pdfItem, imageItem],
+      () => callbacks.onCloseShareMenu(),
+    ));
+
     // Edit popover: crop/rotate, brightness/contrast.
     const cropItem = iconButton(icons.crop, 'Zuschneiden und drehen', 'compact');
-    cropItem.setAttribute('role', 'menuitem');
     cropItem.addEventListener('click', () => callbacks.onEdit());
     const brightnessItem = iconButton(icons.brightness, 'Helligkeit und Kontrast', 'compact');
-    brightnessItem.setAttribute('role', 'menuitem');
     brightnessItem.addEventListener('click', () => callbacks.onTone());
-    const menu = el('div', 'popover', cropItem, brightnessItem);
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Bearbeiten');
-    this.menuBackdrop = el('div', 'popover-backdrop', menu);
-    this.menuBackdrop.addEventListener('click', (event) => {
-      if (event.target === this.menuBackdrop) callbacks.onCloseMenu();
-    });
+    ({ backdrop: this.menuBackdrop, menu: this.menu } = popover(
+      'Bearbeiten',
+      [cropItem, brightnessItem],
+      () => callbacks.onCloseMenu(),
+    ));
 
     // Share sheet
     const segmented = el('div', 'segmented');
@@ -178,7 +222,8 @@ export class CapturedView {
       'screen screen-captured',
       this.pageHeader,
       this.stage.element,
-      el('div', 'button-bar', back, shareButton, this.editButton, this.addButton),
+      el('div', 'button-bar', back, this.shareButton, this.editButton, this.addButton),
+      this.shareMenuBackdrop,
       this.menuBackdrop,
       this.sheetBackdrop,
     );
@@ -186,12 +231,16 @@ export class CapturedView {
 
   /** Brings the header, the buttons, the popover and the sheet in line with the state. */
   render(state: CapturedViewState): void {
-    const { active, count, current, isFull, menuOpen, sheetOpen, level } = state;
+    const { active, count, current, isFull, shareMenuOpen, menuOpen, sheetOpen, level } = state;
     this.current = current;
     this.sheetBackdrop.hidden = !(active && sheetOpen);
+    this.shareMenuBackdrop.hidden = !(active && shareMenuOpen);
+    this.shareButton.setAttribute('aria-expanded', String(shareMenuOpen));
+    if (shareMenuOpen) anchorPopover(this.shareMenu, this.shareButton, this.element);
     this.menuBackdrop.hidden = !(active && menuOpen);
     this.editButton.setAttribute('aria-expanded', String(menuOpen));
     this.editButton.classList.toggle('primary', menuOpen);
+    if (menuOpen) anchorPopover(this.menu, this.editButton, this.element);
     for (const l of COMPRESSION_LEVELS) {
       this.levelButtons[l].setAttribute('aria-checked', String(l === level));
     }
