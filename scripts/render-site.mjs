@@ -3,9 +3,12 @@
 // .env in the repo root, so the personal data never enters the repository.
 // site/index.html is git-ignored and generated at build time (see package.json "site" script).
 // Without a .env the placeholders from .env.example are used and a warning is printed.
+// It also fills {{QR_SVG}} with an inline SVG QR code of the app URL, which the hero shows
+// instead of the "open the app" button on desktop browsers (see the template's CSS).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import QRCode from 'qrcode';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
@@ -14,6 +17,9 @@ const templatePath = join(repoRoot, 'site/index.template.html');
 const outPath = join(repoRoot, 'site/index.html');
 const envPath = join(repoRoot, '.env');
 const envExamplePath = join(repoRoot, '.env.example');
+
+// Encoded into the desktop QR code; the PWA is served at this fixed address (see deploy.sh).
+const APP_URL = 'https://mobilescan.app/app/';
 
 const KEYS = [
   'IMPRINT_NAME',
@@ -65,6 +71,13 @@ if (missing.length > 0) {
 
 const values = Object.fromEntries(KEYS.map((key) => [key, escapeHtml(env[key])]));
 values.YEAR = String(new Date().getFullYear());
+// Modules on currentColor, background from the page CSS; the encoder's own white square is dropped.
+values.QR_SVG = (
+  await QRCode.toString(APP_URL, { type: 'svg', errorCorrectionLevel: 'M', margin: 0 })
+)
+  .replace(/<path fill="#ffffff"[^>]*\/>/, '')
+  .replace('stroke="#000000"', 'stroke="currentColor"')
+  .replace('<svg ', '<svg aria-hidden="true" ');
 
 const template = readFileSync(templatePath, 'utf8');
 const unknown = new Set();

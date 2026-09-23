@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#1e40af" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="description" content="MobileScan: Papierdokumente mit dem Handy scannen und als PDF teilen. Alles bleibt auf dem Gerät. / Scan paper documents with your phone and share them as PDF. Everything stays on your device." />
+    <meta name="description" content="MobileScan: Papierdokumente mit dem Handy scannen und als PDF teilen.<br />Alles bleibt auf dem Gerät. / Scan paper documents with your phone and share them as PDF. Everything stays on your device." />
     <link rel="icon" href="/app/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/app/icons/icon-192.png" />
     <title>MobileScan</title>
@@ -138,6 +138,33 @@
       }
       .cta:hover { transform: translateY(-1px); box-shadow: 0 14px 28px -14px rgba(30, 64, 175, 0.9); }
       .cta svg { width: 1.2rem; height: 1.2rem; }
+      /* Desktop browsers (mouse, hover) get a QR code of the app URL instead of the button:
+         the app needs the phone's camera, so the phone is where it should be opened. */
+      .qr { display: none; }
+      @media (hover: hover) and (pointer: fine) {
+        .cta { display: none; }
+        .qr {
+          display: inline-flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.75rem;
+          color: var(--ink);
+          text-decoration: none;
+        }
+        .qr svg {
+          width: 9.5rem;
+          height: 9.5rem;
+          padding: 0.75rem;
+          border-radius: 0.75rem;
+          color: #111827; /* the code stays dark on its white tile in both colour schemes */
+          background: #fff;
+          box-shadow: 0 10px 24px -14px rgba(30, 64, 175, 0.8);
+        }
+        .qr span {
+          font-size: 0.9375rem;
+          color: var(--ink-muted);
+        }
+      }
       .hero .note {
         margin: 1.25rem 0 0;
         font-size: 0.9375rem;
@@ -255,8 +282,14 @@
         <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h6"/>
         </symbol>
-        <symbol id="i-eraser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 19h16"/><path d="M8 19 3.5 14.5a2 2 0 0 1 0-2.8L12 3.2a2 2 0 0 1 2.8 0l5 5a2 2 0 0 1 0 2.8L12 19"/>
+        <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="2" width="12" height="20" rx="2"/><path d="M12 9v6M9 12h6"/>
+        </symbol>
+        <symbol id="i-offline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17.5 19a4.5 4.5 0 0 0 .6-8.96A7 7 0 0 0 6.5 8"/><path d="M7 19h10.5"/><path d="M3.3 9.3A4.5 4.5 0 0 0 6.5 19H7"/><path d="m2 2 20 20"/>
+        </symbol>
+        <symbol id="i-gift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
         </symbol>
         <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/>
@@ -280,12 +313,17 @@
         <section class="hero">
           <svg class="icon" role="img" aria-label="MobileScan"><use href="#app-icon"/></svg>
           <h1>MobileScan</h1>
-          <p class="tagline" lang="de">Papier scannen, als PDF teilen. Alles bleibt auf dem Gerät.</p>
-          <p class="tagline" lang="en">Scan paper, share as PDF. Everything stays on your device.</p>
+          <p class="tagline" lang="de">Papier scannen, als PDF teilen.<br />Alles bleibt auf dem Gerät.</p>
+          <p class="tagline" lang="en">Scan paper, share as PDF.<br />Everything stays on your device.</p>
           <a class="cta" href="/app/">
             <span lang="de">App öffnen</span>
             <span lang="en">Open the app</span>
             <svg aria-hidden="true"><use href="#i-arrow"/></svg>
+          </a>
+          <a class="qr" href="/app/">
+            {{QR_SVG}}
+            <span lang="de">Scannen, um die App auf dem Handy zu öffnen</span>
+            <span lang="en">Scan to open the app on your phone</span>
           </a>
           <p class="note" lang="de">Läuft im Browser auf Android und iPhone. Zum Startbildschirm hinzufügen, fertig.</p>
           <p class="note" lang="en">Runs in the browser on Android and iPhone. Add it to your home screen and you are set.</p>
@@ -303,8 +341,8 @@
         <ul class="facts">
           <li>
             <svg aria-hidden="true"><use href="#i-lock"/></svg>
-            <span lang="de"><strong>Nur lokal</strong>Kein Upload, kein Konto, kein Tracking.</span>
-            <span lang="en"><strong>Local only</strong>No upload, no account, no tracking.</span>
+            <span lang="de"><strong>Nur lokal</strong>Kein Upload, kein Konto, kein Tracking. Nach dem Teilen wird das Bild verworfen.</span>
+            <span lang="en"><strong>Local only</strong>No upload, no account, no tracking. After sharing, the image is discarded.</span>
           </li>
           <li>
             <svg aria-hidden="true"><use href="#i-file"/></svg>
@@ -312,9 +350,19 @@
             <span lang="en"><strong>PDF on A4</strong>One or more pages, three compression levels, shared through the system sheet. A single page also as a JPEG.</span>
           </li>
           <li>
-            <svg aria-hidden="true"><use href="#i-eraser"/></svg>
-            <span lang="de"><strong>Nichts bleibt</strong>Nach dem Teilen wird das Bild verworfen.</span>
-            <span lang="en"><strong>Nothing kept</strong>After sharing, the image is discarded.</span>
+            <svg aria-hidden="true"><use href="#i-phone"/></svg>
+            <span lang="de"><strong>Ohne Installation</strong>Läuft im Browser. Auf Wunsch zum Startbildschirm hinzufügen, kein Store nötig.</span>
+            <span lang="en"><strong>No install needed</strong>Runs in the browser. Add it to your home screen if you like, no store required.</span>
+          </li>
+          <li>
+            <svg aria-hidden="true"><use href="#i-offline"/></svg>
+            <span lang="de"><strong>Funktioniert offline</strong>Einmal geladen, scannt die App auch ohne Verbindung.</span>
+            <span lang="en"><strong>Works offline</strong>Once loaded, the app scans without a connection.</span>
+          </li>
+          <li>
+            <svg aria-hidden="true"><use href="#i-gift"/></svg>
+            <span lang="de"><strong>Für immer kostenlos</strong>Die App ist kostenlos und bleibt es. Keine Zahlungen, keine Konten, keine Abos, keine Werbung.</span>
+            <span lang="en"><strong>Free forever</strong>The app is free and stays free. No payments, no accounts, no subscriptions, no ads.</span>
           </li>
           <li>
             <svg aria-hidden="true"><use href="#i-code"/></svg>
