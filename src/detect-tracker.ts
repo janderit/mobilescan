@@ -82,7 +82,8 @@ export class DetectionTracker {
   }
 }
 
-function quadsAgree(a: Quad, b: Quad, tolerance: number): boolean {
+/** True when no corner of `a` is further than `tolerance` from the same corner of `b`. */
+export function quadsAgree(a: Quad, b: Quad, tolerance: number): boolean {
   for (let i = 0; i < 4; i += 1) {
     if (Math.hypot(a[i]!.x - b[i]!.x, a[i]!.y - b[i]!.y) > tolerance) return false;
   }

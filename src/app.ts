@@ -16,7 +16,7 @@ import type { CompressionLevel, Frame, Page, ShareFormat } from './model';
 import { el, prefersReducedMotion } from './ui';
 import { initialFrame, scaleFrame } from './geometry';
 import { DEFAULT_COMPRESSION } from './quality';
-import { cameraErrorKind, captureStill, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
+import { cameraErrorKind, startCamera, stopCamera, type CameraErrorKind, type CameraSession } from './camera';
 import { buildJpegFile, buildPdfFile, shareFile } from './share';
 import type { UpdateChecker } from './update';
 import { UpdatePrompt } from './update-prompt';
@@ -412,7 +412,8 @@ export class App {
     if (!session || this.busy) return;
     let image: HTMLCanvasElement;
     try {
-      image = captureStill(session);
+      // The frozen still of the green moment when the shutter followed it closely, else a fresh grab.
+      image = this.cameraView.takeStill();
     } catch (error) {
       this.overlays.fail('Aufnahme fehlgeschlagen', error);
       return;

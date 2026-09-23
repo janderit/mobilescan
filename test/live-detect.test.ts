@@ -11,7 +11,7 @@ import * as bake from '../src/bake';
 
 vi.mock('../src/camera', async () => {
   const actual = await vi.importActual<typeof import('../src/camera')>('../src/camera');
-  return { ...actual, startCamera: vi.fn(), stopCamera: vi.fn() };
+  return { ...actual, startCamera: vi.fn(), stopCamera: vi.fn(), captureStill: vi.fn(actual.captureStill) };
 });
 
 /**
@@ -28,10 +28,12 @@ vi.mock('../src/bake', async (importOriginal) => {
   return { ...original, bakeFrame: vi.fn(original.bakeFrame) };
 });
 
-import { startCamera } from '../src/camera';
+import { captureStill, startCamera } from '../src/camera';
 import { detectFrameStrict } from '../src/detect';
+import { FROZEN_STILL_MS } from '../src/camera-view';
 
 const startCameraMock = vi.mocked(startCamera);
+const captureStillMock = vi.mocked(captureStill);
 const detectMock = vi.mocked(detectFrameStrict);
 const bakeMock = vi.mocked(bake.bakeFrame);
 
@@ -359,6 +361,99 @@ describe('camera view with live detection (v0.10)', () => {
     expect(app.screen).toBe('captured');
     expect(bakeMock).not.toHaveBeenCalled();
     expect(root.querySelector<HTMLElement>('.notice')?.hidden).toBe(false);
+  });
+
+  describe('frozen still (v0.12)', () => {
+    const hit: Frame = { cx: 150, cy: 200, width: 180, height: 250, angle: 0 };
+
+    /** Three agreeing runs: the outline turns green and the still of that moment is grabbed. */
+    async function findDocument(): Promise<HTMLCanvasElement> {
+      await openCamera();
+      detectMock.mockReturnValue(hit);
+      videoFrame();
+      videoFrame();
+      expect(captureStillMock).not.toHaveBeenCalled();
+      videoFrame();
+      expect(root.querySelector('.camera-frame')!.classList.contains('found')).toBe(true);
+      expect(captureStillMock).toHaveBeenCalledTimes(1);
+      return captureStillMock.mock.results[0]!.value as HTMLCanvasElement;
+    }
+
+    it('uses the still of the green moment when the shutter follows within the window', async () => {
+      const frozen = await findDocument();
+      clock += FROZEN_STILL_MS - 50;
+      button(root, 'Foto aufnehmen').click();
+      await settle();
+      expect(app.screen).toBe('captured');
+      expect(captureStillMock).toHaveBeenCalledTimes(1);
+      expect(app.pageList[0]!.image).toBe(frozen);
+      expect(frozen.width).toBeGreaterThan(0);
+      expect(bakeMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('grabs a fresh still after the window and releases the frozen one', async () => {
+      const frozen = await findDocument();
+      clock += FROZEN_STILL_MS + 1;
+      button(root, 'Foto aufnehmen').click();
+      await settle();
+      expect(captureStillMock).toHaveBeenCalledTimes(2);
+      expect(app.pageList[0]!.image).not.toBe(frozen);
+      expect(frozen.width).toBe(0);
+    });
+
+    it('grabs a fresh still when the document drifted since the green moment', async () => {
+      const frozen = await findDocument();
+      // Each run agrees with the smoothed outline, but the outline drifts away from the frozen corners.
+      for (const dx of [2.5, 5, 7.5, 10]) {
+        detectMock.mockReturnValue({ ...hit, cx: hit.cx + dx });
+        videoFrame();
+      }
+      expect(root.querySelector('.camera-frame')!.classList.contains('found')).toBe(true);
+      clock = 0;
+      button(root, 'Foto aufnehmen').click();
+      await settle();
+      expect(captureStillMock).toHaveBeenCalledTimes(2);
+      expect(app.pageList[0]!.image).not.toBe(frozen);
+      expect(frozen.width).toBe(0);
+    });
+
+    it('releases the frozen still when the outline is lost', async () => {
+      const frozen = await findDocument();
+      detectMock.mockReturnValue(null);
+      videoFrame();
+      videoFrame();
+      expect(root.querySelector('.camera-frame')!.classList.contains('found')).toBe(false);
+      expect(frozen.width).toBe(0);
+      button(root, 'Foto aufnehmen').click();
+      await settle();
+      expect(captureStillMock).toHaveBeenCalledTimes(2);
+      expect(app.pageList[0]!.image).not.toBe(frozen);
+    });
+
+    it('releases the frozen still when the toggle is switched off and when the camera closes', async () => {
+      const first = await findDocument();
+      button(root, 'Dokument automatisch erkennen').click();
+      expect(first.width).toBe(0);
+      button(root, 'Dokument automatisch erkennen').click();
+      videoFrame();
+      videoFrame();
+      videoFrame();
+      const second = captureStillMock.mock.results[1]!.value as HTMLCanvasElement;
+      expect(second.width).toBeGreaterThan(0);
+      button(root, 'Zurück', '.screen-camera').click();
+      expect(second.width).toBe(0);
+    });
+
+    it('takes the photo on the press of the shutter; the click that follows does nothing', async () => {
+      await openCamera();
+      const shutter = button(root, 'Foto aufnehmen');
+      shutter.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true }));
+      shutter.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await settle();
+      expect(app.screen).toBe('captured');
+      expect(app.pageList).toHaveLength(1);
+      expect(captureStillMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('stops the loop with the stream and hides the overlay', async () => {

@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Versions v0.1 through v0.11 are implemented: capture + share, crop/rotate, brightness/contrast,
+Versions v0.1 through v0.12 are implemented: capture + share, crop/rotate, brightness/contrast,
 UI polish, multi-page PDFs, loupe previews while dragging, shear / perspective correction,
 auto-detect for frame and tone, pinch zoom in the captured and edit views, live document
-detection in the camera view with auto-bake on capture, and sharing a single page as a JPEG. The repository contains the product spec
+detection in the camera view with auto-bake on capture, sharing a single page as a JPEG, and the
+frozen still of the green moment for a shutter pressed right after it. The repository contains the product spec
 (`README.md`), design intent documents with per-version definitions, icons and mockups
 (`intent/`), and the TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -70,7 +71,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.11-share-jpeg.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -148,6 +149,11 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   becomes the page frame and is baked behind the busy overlay (the page is created with the static
   frame, so a failed bake leaves it), a miss keeps the static frame and shows the notice if the
   outline was green. The live result is never used for the bake. There is no automatic capture.
+  When the outline turns green the camera view grabs a still at once and keeps it for
+  `FROZEN_STILL_MS`; the shutter (`takeStill`) uses it when it is younger than that, the outline
+  is still green and the live corners agree with the frozen ones within `AGREE_FRACTION`, else a
+  fresh grab. The frozen still is released (width 0) with the window, on loss, toggle off,
+  relayout and close. The shutter fires on `pointerdown`; the following click finds no session.
 - **Share.** Three compression levels (`src/quality.ts`); every page's frame region is encoded as
   JPEG in order and placed on a fixed A4 page scaled to fit (orientation follows the crop, borders
   on one axis accepted; `src/pdf.ts`), and one PDF goes to the Web Share API. With exactly one
@@ -196,4 +202,4 @@ Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm],
 
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
 v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom →
-v0.10 live detect → v0.11 share as JPEG. Each version is independently deployable. Do not pull features from a later version into an earlier one.
+v0.10 live detect → v0.11 share as JPEG → v0.12 frozen still. Each version is independently deployable. Do not pull features from a later version into an earlier one.

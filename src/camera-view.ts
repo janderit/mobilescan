@@ -2,22 +2,43 @@
  * Camera screen: the live video, the frame overlay (shade with a hole and the
  * dashed outline, which is the static DIN rectangle or, with a document found,
  * its corners), back, shutter and the live-detect toggle. Owns the
- * camera session while open and the `LiveDetector` loop. The capture itself
- * (`takePhoto`) stays in the app shell, which reads `session`, `liveFrame`
- * and `liveFound` at the shutter.
+ * camera session while open and the `LiveDetector` loop. When the outline
+ * turns green the view grabs a still at once (`frozen`) and keeps it for
+ * `FROZEN_STILL_MS`, so that a shutter pressed in reaction to the green
+ * outline gets the steady picture from before the press moved the phone
+ * (v0.12). The capture itself (`takePhoto`) stays in the app shell, which
+ * reads `liveFrame` and `liveFound` at the shutter and takes the still
+ * through `takeStill`.
  */
 
 import * as icons from './icons';
 import type { Point, UprightFrame } from './model';
 import { iconButton, el, prefersReducedMotion } from './ui';
 import { applyAffine, coverTransform, frameCorners, initialFrame, visibleImageRect, type Affine } from './geometry';
-import { stopCamera, type CameraSession } from './camera';
-import type { TrackerState } from './detect';
+import { captureStill, stopCamera, type CameraSession } from './camera';
+import { releaseCanvas } from './canvas';
+import { AGREE_FRACTION, quadsAgree, type TrackerState } from './detect';
+import type { Quad } from './geometry';
 import { LiveDetector } from './live-detect';
 import { FrameOverlay } from './frame-overlay';
 
 /** Vibration when the live outline turns green (the shutter uses 30 ms). */
 const FOUND_VIBRATION_MS = 15;
+/**
+ * How long the still grabbed when the outline turned green stays usable:
+ * reaction to the buzz plus the press take about half a second, and holding
+ * the still longer only costs memory (one full capture canvas).
+ */
+export const FROZEN_STILL_MS = 600;
+
+/** The still grabbed at the moment the outline turned green. */
+interface FrozenStill {
+  image: HTMLCanvasElement;
+  /** The tracker's corners at that moment, in track pixels. */
+  corners: Quad;
+  /** `performance.now()` of the grab. */
+  at: number;
+}
 
 /** Haptic feedback where supported; silent under reduced motion. */
 export function vibrate(ms: number): void {
@@ -53,6 +74,8 @@ export class CameraView {
   private detectEnabled = true;
 
   private currentSession: CameraSession | null = null;
+  private frozen: FrozenStill | null = null;
+  private frozenTimer: ReturnType<typeof setTimeout> | null = null;
   /** Frame shown over the live video, in track pixel coordinates. */
   private frame: UprightFrame | null = null;
   /** Track pixels -> viewport pixels of the camera screen. */
@@ -78,6 +101,12 @@ export class CameraView {
     const back = iconButton(icons.arrowLeft, 'Zurück', 'dark camera-back');
     back.addEventListener('click', () => callbacks.onBack());
     const shutter = iconButton(icons.shutter, 'Foto aufnehmen', 'camera-shutter');
+    // The still is grabbed on the press, not the release: the finger moves the
+    // phone most on the way down. The click that follows finds the session
+    // closed and does nothing; keyboard activation still arrives as a click.
+    shutter.addEventListener('pointerdown', (event) => {
+      if (event.button === 0) callbacks.onShutter();
+    });
     shutter.addEventListener('click', () => callbacks.onShutter());
     this.detectButton = iconButton(icons.magicWand, 'Dokument automatisch erkennen', 'dark camera-detect');
     this.detectButton.addEventListener('click', () => this.toggleLiveDetect());
@@ -122,6 +151,33 @@ export class CameraView {
     return this.detectEnabled && this.liveState.found;
   }
 
+  /**
+   * The still for the shutter: the frozen one when it is young enough, the
+   * outline is still green and the document has not moved since (each corner
+   * within `AGREE_FRACTION` of the frame width), else a fresh grab from the
+   * video. Either way the frozen still is given up. Throws when the grab fails.
+   */
+  takeStill(): HTMLCanvasElement {
+    const session = this.currentSession;
+    if (!session) throw new Error('Keine Kamera');
+    const frozen = this.frozen;
+    const frame = this.frame;
+    const corners = this.liveFound ? this.liveState.corners : null;
+    if (
+      frozen &&
+      frame &&
+      corners &&
+      performance.now() - frozen.at <= FROZEN_STILL_MS &&
+      quadsAgree(corners, frozen.corners, AGREE_FRACTION * frame.width)
+    ) {
+      this.frozen = null;
+      this.clearFrozenTimer();
+      return frozen.image;
+    }
+    this.releaseFrozen();
+    return captureStill(session);
+  }
+
   /** Shows a started camera session on the screen and lays out the frame. */
   open(session: CameraSession): void {
     this.currentSession = session;
@@ -158,6 +214,7 @@ export class CameraView {
   /** Stops the detection loop and the camera stream and hides the overlay. */
   close(): void {
     this.liveDetector.stop();
+    this.releaseFrozen();
     this.liveState = { found: false, corners: null };
     if (this.currentSession) {
       stopCamera(this.currentSession);
@@ -194,10 +251,12 @@ export class CameraView {
     const frame = this.frame;
     if (!session || !this.detectEnabled || !frame) {
       this.liveDetector.stop();
+      this.releaseFrozen();
       this.liveState = { found: false, corners: null };
       return;
     }
     if (frameChanged || !this.liveDetector.running) {
+      this.releaseFrozen();
       this.liveState = { found: false, corners: null };
       this.liveDetector.start(frame, session.width);
     }
@@ -206,8 +265,38 @@ export class CameraView {
   private onLiveResult(state: TrackerState): void {
     const wasFound = this.liveState.found;
     this.liveState = state;
-    if (state.found && !wasFound) vibrate(FOUND_VIBRATION_MS);
+    if (state.found && !wasFound) {
+      vibrate(FOUND_VIBRATION_MS);
+      this.freezeStill(state.corners);
+    } else if (!state.found) {
+      this.releaseFrozen();
+    }
     this.renderCameraFrame();
+  }
+
+  /** Grabs the still of the moment the outline turned green; a failed grab leaves none. */
+  private freezeStill(corners: Quad | null): void {
+    this.releaseFrozen();
+    const session = this.currentSession;
+    if (!session || !corners) return;
+    try {
+      this.frozen = { image: captureStill(session), corners, at: performance.now() };
+    } catch (error) {
+      console.error('Standbild fehlgeschlagen', error);
+      return;
+    }
+    this.frozenTimer = setTimeout(() => this.releaseFrozen(), FROZEN_STILL_MS);
+  }
+
+  private releaseFrozen(): void {
+    this.clearFrozenTimer();
+    if (this.frozen) releaseCanvas(this.frozen.image);
+    this.frozen = null;
+  }
+
+  private clearFrozenTimer(): void {
+    if (this.frozenTimer !== null) clearTimeout(this.frozenTimer);
+    this.frozenTimer = null;
   }
 
   private toggleLiveDetect(): void {
