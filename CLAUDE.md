@@ -201,7 +201,7 @@ the intent files hold the reasoning, the named constants in the code hold the nu
 - **No persistence.** Pages, frames, tones, zoom and the live-detect toggle live in memory for the
   session; nothing is written to storage, and the service worker precaches only the app shell.
 
-Screens: start (with update and install buttons under the start button, and the iOS install help card) → camera (or camera error) → captured image [back] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
+Screens: start (with update and install buttons under the start button, and the iOS install help card) → camera (or camera error) → captured image [discard (trash can; removes the page, with one page the retake)] [share] [edit] [+] → share popover (PDF, image; single page only) → share sheet; edit popover (crop/rotate, brightness/contrast).
 Camera view: [back] top-left, [shutter] with the live-detect switch to its right, dashed outline (grey static frame or green detected document).
 Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm], with loupes in the stage centre during drags. Brightness/contrast view: [back] [brightness|contrast|temperature] [grayscale toggle] [auto] [confirm].
 

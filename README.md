@@ -50,7 +50,7 @@ Once pressed, the image is taken and displayed.
 The image taken shall be larger than the image displayed: The dashed frame from above defines the visible image, the remaining 10% are not shown here but are available for below image correction options.
 
 Four buttons are available below the image:
-"back" to go back to the camera,
+"discard" (a trash can: the button removes the page, so the icon says so rather than "back") to go back to the camera,
 "share" to save the result,
 "edit" with a submenu of:
 
@@ -65,7 +65,7 @@ Mockups: `intent/mockups/v0.1-*.svg`, `intent/mockups/v0.5-*.svg`.
 
 ### Several pages
 
-A scan can consist of several pages. "+" opens the camera for the next page, which is appended after the last one and becomes the current page. With two or more pages a header above the image shows the position ("2/2") with arrows to move between pages. "back" removes the current page (with a single page it returns to the camera as before). Editing always applies to the current page only. Sharing builds one PDF with all pages in capture order. Pages that are not on screen are held as compressed images so that up to 20 pages fit into a phone's memory.
+A scan can consist of several pages. "+" opens the camera for the next page, which is appended after the last one and becomes the current page. With two or more pages a header above the image shows the position ("2/2") with arrows to move between pages. "discard" (the trash can) removes the current page (with a single page it returns to the camera as before). Editing always applies to the current page only. Sharing builds one PDF with all pages in capture order. Pages that are not on screen are held as compressed images so that up to 20 pages fit into a phone's memory.
 
 Details: `intent/v0.5-multi-page.md`.
 

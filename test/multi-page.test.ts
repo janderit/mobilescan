@@ -241,7 +241,7 @@ describe('multi-page scans (v0.5)', () => {
   it('back on page 2 of 2 removes it and shows page 1; back again reopens the camera', async () => {
     await scanFirstPage();
     await addPage();
-    button(root, 'Zurück', '.screen-captured').click();
+    button(root, 'Seite verwerfen', '.screen-captured').click();
     await settle();
     expect(app.screen).toBe('captured');
     expect(app.pageCount).toBe(1);
@@ -249,7 +249,7 @@ describe('multi-page scans (v0.5)', () => {
     expect(header(root).hidden).toBe(true);
     expect(app.liveCanvasCount).toBe(1);
 
-    button(root, 'Zurück', '.screen-captured').click();
+    button(root, 'Seite verwerfen', '.screen-captured').click();
     await settle();
     expect(app.screen).toBe('camera');
     expect(app.pageCount).toBe(0);
@@ -265,7 +265,7 @@ describe('multi-page scans (v0.5)', () => {
     await settle();
     expect(position(root)).toBe('1/3');
     const second = app.pageList[1];
-    button(root, 'Zurück', '.screen-captured').click();
+    button(root, 'Seite verwerfen', '.screen-captured').click();
     await settle();
     expect(app.pageCount).toBe(2);
     expect(app.currentIndex).toBe(0);

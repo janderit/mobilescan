@@ -14,6 +14,7 @@ MOCKS = os.path.join(ROOT, "intent", "mockups")
 # name -> (description, inner svg markup in a 24x24 box)
 ICON = {
     "arrow-left": ("Back", '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>'),
+    "trash": ("Discard page", '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>'),
     "shutter": ("Take picture", '<circle cx="12" cy="12" r="12" fill="currentColor" stroke="none"/>'),
     "share": ("Share / save PDF", '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/>'),
     "edit": ("Edit submenu (sliders)", '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>'),
@@ -159,7 +160,7 @@ def captured(extra=""):
     return (f'<rect x="{fx}" y="{fy}" width="{fw}" height="{fh}" fill="#6b7280"/>'
             + f'<clipPath id="cap"><rect x="{fx}" y="{fy}" width="{fw}" height="{fh}"/></clipPath>'
             + f'<g clip-path="url(#cap)">' + paper(40, 100, 310, 440, rot=-4) + '</g>'
-            + btn("arrow-left", 70, BAR) + btn("share", W/2, BAR, fill="#1e40af", stroke="#1e40af", color="#ffffff") + btn("edit", 320, BAR)
+            + btn("trash", 70, BAR) + btn("share", W/2, BAR, fill="#1e40af", stroke="#1e40af", color="#ffffff") + btn("edit", 320, BAR)
             + extra)
 
 def share_sheet():
@@ -272,7 +273,7 @@ def captured_v05(current=1, total=1):
         body += (btn("chevron-left", 60, 72, r=22, color="#111827" if prev_ok else "#d1d5db", size=24)
                  + f'<text x="{W/2}" y="79" text-anchor="middle" font-size="20" font-weight="600" fill="#111827">{current}/{total}</text>'
                  + btn("chevron-right", 330, 72, r=22, color="#111827" if next_ok else "#d1d5db", size=24))
-    body += (btn("arrow-left", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
+    body += (btn("trash", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
              + btn("edit", 243, BAR) + btn("add-page", 338, BAR))
     return body
 
@@ -408,7 +409,7 @@ def zoomed():
             + finger(ax - 70, ay + 40) + finger(ax + 70, ay - 40)
             + f'<path d="M{ax-48} {ay+27} L{ax-20} {ay+11}" stroke="#111827" stroke-width="2" fill="none"/>'
             + f'<path d="M{ax+48} {ay-27} L{ax+20} {ay-11}" stroke="#111827" stroke-width="2" fill="none"/>')
-    body += (btn("arrow-left", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
+    body += (btn("trash", 52, BAR) + btn("share", 147, BAR, **PRIMARY)
              + btn("edit", 243, BAR) + btn("add-page", 338, BAR))
     return body
 
@@ -437,7 +438,7 @@ def share_menu():
 SCREENS = [
     ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app; info link to the product page bottom right (v0.12)."),
     ("v0.1-02-camera", "v0.1 Camera with DIN frame", camera(), "#374151", "Camera: dashed DIN A frame at 90 % width, shutter below."),
-    ("v0.1-03-captured", "v0.1 Captured image", captured(), "#ffffff", "Captured: frame area only. [back] [share] [edit]"),
+    ("v0.1-03-captured", "v0.1 Captured image", captured(), "#ffffff", "Captured: frame area only. [discard] [share] [edit]"),
     ("v0.1-04-share-sheet", "v0.1 Share sheet with compression level", share_sheet(), "#ffffff", "Share sheet: pick compression, confirm opens OS share."),
     ("v0.1-05-busy", "v0.1 Busy while generating PDF", busy(), "#ffffff", "Busy overlay while compressing and building the PDF."),
     ("v0.2-01-edit-menu", "v0.2 Edit submenu", edit_menu(), "#ffffff", "Edit popover: crop/rotate, brightness/contrast."),
@@ -449,7 +450,7 @@ SCREENS = [
     ("v0.3-03-temperature", "v0.3 Colour temperature", bc(2), "#ffffff", "Temperature: cool .. warm, neutral in the middle."),
     ("v0.3-04-grayscale", "v0.3 Grayscale toggle", bc(0, gray=True), "#ffffff", "Grayscale toggle on: colour dropped, values still apply."),
     ("v0.4-01-camera-error", "v0.4 Camera unavailable", camera_error(), "#111827", "Camera unavailable: icon-only error, retry, back."),
-    ("v0.5-01-captured-plus", "v0.5 Captured view with [+]", captured_v05(1, 1), "#ffffff", "One page: no header. [back] [share] [edit] [+]"),
+    ("v0.5-01-captured-plus", "v0.5 Captured view with [+]", captured_v05(1, 1), "#ffffff", "One page: no header. [discard] [share] [edit] [+]"),
     ("v0.5-02-page-2-of-2", "v0.5 Second of two pages", captured_v05(2, 2), "#ffffff", "Two pages: header [prev] 2/2 [next], next disabled."),
     ("v0.6-01-loupe-corner", "v0.6 Loupe while dragging a corner", loupe_corner(), "#ffffff", "Corner drag: one loupe, frame corner at its centre."),
     ("v0.6-02-loupes-edge", "v0.6 Loupes while dragging an edge", loupes_edge(), "#ffffff", "Edge drag: two loupes for the edge's corners."),

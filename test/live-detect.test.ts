@@ -307,7 +307,7 @@ describe('camera view with live detection (v0.10)', () => {
     expect(detectMock).not.toHaveBeenCalled();
     expect(bakeMock).not.toHaveBeenCalled();
     // Back with one page reopens the camera: the toggle is still off.
-    button(root, 'Zurück', '.screen-captured').click();
+    button(root, 'Seite verwerfen', '.screen-captured').click();
     await settle();
     expect(app.screen).toBe('camera');
     expect(button(root, 'Dokument automatisch erkennen').getAttribute('aria-checked')).toBe('false');

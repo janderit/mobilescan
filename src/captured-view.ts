@@ -1,7 +1,7 @@
 /**
  * Captured screen: the page header ([previous] "n/m" [next]), the current
  * page's frame region on a zoomable `FrameStage`, the button
- * bar (back, share, edit, [+]), the share popover (PDF | image, single page
+ * bar (discard, share, edit, [+]), the share popover (PDF | image, single page
  * only), the edit popover and the share sheet with the three-level
  * compression control. Pure presentation: the app shell keeps the open flags,
  * the format and the level in its state and hands them to `render`; every
@@ -68,7 +68,7 @@ function setDisabled(button: HTMLButtonElement, disabled: boolean): void {
 }
 
 export interface CapturedViewCallbacks {
-  /** Back button. */
+  /** Discard button (the trash can): removes the current page, with a single page the retake. */
   onBack: () => void;
   /** Share button: open the share popover or the sheet. */
   onShare: () => void;
@@ -146,7 +146,7 @@ export class CapturedView {
         this.swipeStart = null;
       },
     });
-    const back = iconButton(icons.arrowLeft, 'Zurück');
+    const back = iconButton(icons.trash, 'Seite verwerfen');
     back.addEventListener('click', () => callbacks.onBack());
     this.shareButton = iconButton(icons.share, 'Teilen', 'primary');
     this.shareButton.addEventListener('click', () => callbacks.onShare());
