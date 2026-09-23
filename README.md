@@ -34,7 +34,7 @@ the browser prompts to install the progressive web application.
 
 When the app is online and the website carries a newer build, the start page also shows an update button (refresh icon) below the start button; tapping it installs the update and reloads the app. Offline, the button never appears.
 
-While the app runs in a browser tab rather than installed, the start page shows an install button (download icon) next to the update slot. On Chrome for Android it opens the browser's install prompt; on iOS, where no browser offers an install API, it opens a short help card with the share sheet route (share, then "Zum Home-Bildschirm"). Installed, or in a browser that offers neither, the button does not appear.
+While the app runs in a browser tab rather than installed, the start page shows an install button (download icon) next to the update slot. On Chrome for Android it opens the browser's install prompt; on iOS, where no browser offers an install API, it opens a short help card ("So installierst Du die App:") with the share sheet route (share, then "Zum Home-Bildschirm"). Installed, or in a browser that offers neither, the button does not appear.
 
 The start page shows a "Dokument scannen" button, which enables the camera with a dashed frame in DIN A* format superimposed on the live image (portrait orientation).
 The frame shall be about 90% of the total image size, to allow for later rotation/correction.

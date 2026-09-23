@@ -219,6 +219,12 @@ button {
   animation: pop-in var(--fade) ease-out;
 }
 
+.install-help-intro {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
 .install-steps {
   display: flex;
   flex-direction: column;

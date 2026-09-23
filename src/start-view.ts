@@ -96,8 +96,9 @@ export class StartView {
 }
 
 /**
- * The iOS install help: a card over the start page with the two steps of
- * the share sheet route, each an icon with its caption, and a close button.
+ * The iOS install help: a card over the start page with a one-line intro,
+ * the two steps of the share sheet route, each an icon with its caption,
+ * and a close button.
  * Tapping the backdrop closes it too.
  */
 function buildInstallHelp(callbacks: StartViewCallbacks): HTMLElement {
@@ -112,6 +113,7 @@ function buildInstallHelp(callbacks: StartViewCallbacks): HTMLElement {
   const card = el(
     'div',
     'install-help-card',
+    el('p', 'install-help-intro', 'So installierst Du die App:'),
     el('ol', 'install-steps', step(icons.iosShare, 'Teilen'), step(icons.addToHome, 'Zum Home-Bildschirm')),
     close,
   );

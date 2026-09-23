@@ -165,6 +165,7 @@ describe('App install button', () => {
     expect(help().hidden).toBe(false);
     const captions = [...help().querySelectorAll('.install-step-caption')].map((c) => c.textContent);
     expect(captions).toEqual(['Teilen', 'Zum Home-Bildschirm']);
+    expect(help().querySelector('.install-help-intro')?.textContent).toBe('So installierst Du die App:');
     help().querySelector<HTMLButtonElement>('button[aria-label="Schließen"]')!.click();
     expect(help().hidden).toBe(true);
     installButton().click();

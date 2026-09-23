@@ -50,7 +50,7 @@ frozen still of the green moment for a shutter pressed right after it. The repos
   standalone (`display-mode: standalone` or `navigator.standalone`) and, if not, how it can be
   installed: `native` once Chrome fired `beforeinstallprompt` (kept and `prompt()`ed by the
   install button, gone after use until Chrome fires again), `manual` on iOS (the button opens the
-  help card with the share sheet route, captions "Teilen" / "Zum Home-Bildschirm", the third text
+  help card with the share sheet route, intro "So installierst Du die App:" and captions "Teilen" / "Zum Home-Bildschirm", the third text
   exception), `none` elsewhere and after `appinstalled`. Session state only.
 
 Layout: `src/` app code, `test/` Vitest specs, `scripts/` build/deploy tooling
@@ -93,7 +93,7 @@ Hard constraints from the spec that shape every design decision:
 - **Local only.** All image processing happens in the browser. No data leaves the device except via the OS share-to target the user picks. No server component exists and none should be added.
 - **Static hosting.** Deployed as static files to uberspace (https://mobilescan.app), served by Apache, copied via an scp script that reads `DEPLOY_HOST` and `DEPLOY_PATH` from a git-ignored `.env`. Anything that requires a backend or server-side rendering is out of scope.
 - **No retention.** After a successful share, the image is discarded. Do not add persistence (localStorage, IndexedDB, caches of scans). The service worker precaches the app shell only.
-- **Icons, not labels.** UI buttons carry icons only. The visible texts are the German start button "Dokument scannen", since the file icons alone proved unintuitive the short captions "Klein / Mittel / Groß" under the compression icons in the share sheet, and the two step captions of the iOS install help card. Accessibility labels are German `aria-label`s.
+- **Icons, not labels.** UI buttons carry icons only. The visible texts are the German start button "Dokument scannen", since the file icons alone proved unintuitive the short captions "Klein / Mittel / Groß" under the compression icons in the share sheet, and the intro line plus the two step captions of the iOS install help card. Accessibility labels are German `aria-label`s.
 - **Target browsers.** Modern mobile Safari and Chrome only. No desktop or file-input fallback for the camera.
 
 ## Core UX model (spec plus decisions)
