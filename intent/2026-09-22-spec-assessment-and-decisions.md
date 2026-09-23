@@ -144,3 +144,19 @@ after the steady moment the outline announced (`v0.12-frozen-still.md`).
 | Toggle as a switch | The green wand button of v0.10 was read as a button that does something, not as a state. A switch (track green when on, knob with the wand icon) says on/off without text and keeps the icon-only rule. |
 | Feedback | None: the captured view shows the page, whichever still it came from. A hint about which still was used would be text or a new icon for a detail the user cannot act on. |
 
+
+## v1.1 decisions (2026-09-23, wide-angle lens)
+
+Taken with Philip when v1.1 was added, from the question whether the user can switch between
+the 1x and the 0.5x/0.6x rear camera while aiming (`v1.1-wide-lens.md`).
+
+| Topic | Decision |
+|---|---|
+| Two mechanisms | Chrome on Android exposes the wide lens as a zoom range below 1 on the logical rear camera (`getCapabilities().zoom`, `applyConstraints`); Safari on iOS exposes it as a separate video input device. Both are implemented behind one `LensControl`; zoom is tried first because it needs no restart. |
+| Hidden where absent | Many Android phones expose neither to the web. The switch is not rendered then; a disabled control would ask a question the app cannot answer. |
+| Two states, not a zoom slider | The frame concept has the user frame the page. A continuous zoom competes with that and with the pinch zoom of the edit views; default and wide are the two cases the native camera app also offers as buttons. |
+| Switch, not button | Same reasoning as the detect toggle of v0.12: on/off state without text. Left of the shutter so the two switches mirror each other. |
+| Session state | Kept across camera opens within the session, like the detect toggle, because large pages come in batches. Not persisted. |
+| Default first | Every camera open starts the default lens and then applies the remembered choice, so the fallback on a failing wide lens is the working stream, not the error screen. A failing device switch from the running view is a camera error like any other. |
+| No label-based device choice | Device labels are localised. The iOS order (ultra wide, wide, telephoto, then virtual cameras) and the current track's `deviceId` identify the ultra wide; unknown orders give up rather than guess. |
+| Quality | The wide lens is softer, distorts the corners and has no autofocus on iPhones. Accepted: the perspective correction covers the geometry and the user sees the result and can retake; no hint about which lens took a page. |
