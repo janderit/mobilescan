@@ -55,7 +55,7 @@ the bilingual (DE/EN) product page with Impressum and Datenschutzhinweis, deploy
 the state machine and the transitions (`main.ts` only mounts it, so jsdom tests can drive it) over
 three helpers: `screen-switcher.ts` (the cross-fade), `overlays.ts` (busy spinner, error notice and
 `run`, the one place work goes behind the spinner) and `page-flow.ts` (park, wake and bake pages
-over `scan.ts`); the screens are in `start-view.ts`, `error-view.ts` (camera errors), `camera-view.ts` (video, overlay,
+over `scan.ts`); the screens are in `start-view.ts` (also the info link to the product page), `error-view.ts` (camera errors), `camera-view.ts` (video, overlay,
 live detector, detect toggle), `captured-view.ts` (page header, stage, button bar, popover, share
 sheet), `editor.ts` (plus `loupe-cluster.ts`) and `tone-view.ts`; `frame-overlay.ts` is the SVG
 shade-with-hole (and outline) the camera and crop/rotate views draw over their stages; `update-prompt.ts` drives the

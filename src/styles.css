@@ -191,6 +191,22 @@ button {
   color: var(--muted);
 }
 
+/* Info link (v0.12): small, bottom right, muted so the start button keeps the eye. */
+.info-button {
+  position: absolute;
+  right: calc(var(--safe-right) + 16px);
+  bottom: calc(var(--safe-bottom) + 16px);
+  width: 40px;
+  height: 40px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.info-button svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* Camera */
 
 .screen-camera {

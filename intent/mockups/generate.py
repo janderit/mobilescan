@@ -30,6 +30,7 @@ ICON = {
     "file-medium": ("Compression: medium", '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8"/>'),
     "file-large": ("Compression: large file, best quality", '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 9h4M8 13h8M8 17h8"/>'),
     "warning": ("Error state", '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/>'),
+    "info": ("About (product page)", '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>'),
     "refresh": ("Retry", '<path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/>'),
     "spinner": ("Busy indicator (rotates)", '<path d="M12 2a10 10 0 0 1 10 10" stroke-width="3"/>'),
     # v0.5
@@ -137,7 +138,8 @@ BAR = 740
 def start():
     return (f'<text x="{W/2}" y="300" text-anchor="middle" font-size="34" font-weight="700" fill="#111827">MobileScan</text>'
             f'<rect x="55" y="380" width="280" height="64" rx="32" fill="#1e40af"/>'
-            f'<text x="{W/2}" y="422" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">Dokument scannen</text>')
+            f'<text x="{W/2}" y="422" text-anchor="middle" font-size="20" font-weight="600" fill="#ffffff">Dokument scannen</text>'
+            + btn("info", W - 40, H - 48, r=20, fill="#ffffff", stroke="#d1d5db", color="#6b7280", size=20))
 
 def camera():
     # live video fills screen (cover); DIN frame 1:sqrt2, 90% of the visible width, centred
@@ -433,7 +435,7 @@ def share_menu():
     return captured_v05(1, 1) + menu
 
 SCREENS = [
-    ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app."),
+    ("v0.1-01-start", "v0.1 Start page", start(), "#ffffff", "Start: the only text in the app; info link to the product page bottom right (v0.12)."),
     ("v0.1-02-camera", "v0.1 Camera with DIN frame", camera(), "#374151", "Camera: dashed DIN A frame at 90 % width, shutter below."),
     ("v0.1-03-captured", "v0.1 Captured image", captured(), "#ffffff", "Captured: frame area only. [back] [share] [edit]"),
     ("v0.1-04-share-sheet", "v0.1 Share sheet with compression level", share_sheet(), "#ffffff", "Share sheet: pick compression, confirm opens OS share."),

@@ -1,6 +1,7 @@
 /**
  * Start screen: the title, the "Dokument scannen" button, the update slot
- * with the update button and the version line. Pure presentation: the shell
+ * with the update button, the version line and the info link to the product
+ * page (bottom right, opens outside the app). Pure presentation: the shell
  * hands `render` whether an update is known and every button reports to a
  * callback.
  */
@@ -14,6 +15,9 @@ export interface StartViewCallbacks {
   /** The update button. */
   onUpdate: () => void;
 }
+
+/** The product page the info button opens (Impressum, Datenschutz, description). */
+export const PRODUCT_PAGE_URL = 'https://mobilescan.app/';
 
 export interface StartViewOptions {
   /** Build label shown under the buttons. */
@@ -42,6 +46,16 @@ export class StartView {
     this.updateButton.addEventListener('click', () => callbacks.onUpdate());
     // Version line: makes it visible on the phone whether a new build has arrived.
     const version = el('p', 'app-version', `v${options.version} (${options.build})`);
+    // Info link: a small icon-only link to the product page, opened in the
+    // browser (a new tab, or outside the installed app), so the scan is not left.
+    const info = document.createElement('a');
+    info.className = 'icon-button info-button';
+    info.href = PRODUCT_PAGE_URL;
+    info.target = '_blank';
+    info.rel = 'noopener';
+    info.setAttribute('aria-label', 'Über MobileScan');
+    info.innerHTML = icons.info;
+    info.querySelector('svg')?.setAttribute('aria-hidden', 'true');
     this.element = el(
       'section',
       'screen screen-start',
@@ -49,6 +63,7 @@ export class StartView {
       startButton,
       el('div', 'update-slot', this.updateButton),
       version,
+      info,
     );
   }
 

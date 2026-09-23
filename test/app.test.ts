@@ -63,6 +63,14 @@ describe('App', () => {
     expect(root.querySelector<HTMLElement>('.screen-error')?.hidden).toBe(true);
   });
 
+  it('links to the product page from the start page, outside the app', () => {
+    const info = root.querySelector<HTMLAnchorElement>('.screen-start a.info-button')!;
+    expect(info.getAttribute('href')).toBe('https://mobilescan.app/');
+    expect(info.target).toBe('_blank');
+    expect(info.rel).toBe('noopener');
+    expect(info.getAttribute('aria-label')).toBe('Über MobileScan');
+  });
+
   it('shows the error screen when the camera is denied, and retries', async () => {
     startCameraMock.mockRejectedValueOnce(new DOMException('no', 'NotAllowedError'));
     root.querySelector<HTMLButtonElement>('.start-button')!.click();
