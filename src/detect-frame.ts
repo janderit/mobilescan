@@ -3,7 +3,9 @@
  * coordinates and then a frame (rotation from the long edges clamped to the
  * skew range, sizes from the mean opposite sides, the centroid, residuals as
  * corner offsets), with the wand's lenient rule and the live detection's
- * strict rule on top. Pure maths; the working copy comes from the caller.
+ * strict rule on top, and the DIN completion of a third edge (v1.1) switched
+ * by `DetectOptions`. Pure maths; the working copy and the options come from
+ * the caller (detect.ts reads the session settings).
  */
 
 import type { Frame, Point } from './model';
@@ -23,7 +25,7 @@ import {
   withCorners,
   type Quad,
 } from './geometry';
-import { detectEdges, luminanceOf, type Luminance, type WorkingLayout } from './detect-edges';
+import { completeDinEdge, detectEdges, luminanceOf, type Luminance, type Side, type WorkingLayout } from './detect-edges';
 
 /** Corner offsets below this (image pixels) are dropped: a straight-on scan yields a rectangle. */
 export const MIN_CORNER_OFFSET = 1.5;
@@ -35,6 +37,12 @@ export const MIN_CORNER_OFFSET = 1.5;
  */
 export interface DetectBuffers {
   luminance?: Luminance;
+}
+
+/** Switches of the frame detection; all off by default, detect.ts fills them from the session settings. */
+export interface DetectOptions {
+  /** Infer a fourth edge from the DIN A ratio when three were found (`completeDinEdge`). */
+  completeDinEdge?: boolean;
 }
 
 const direction = (a: Point, b: Point): number => Math.atan2(b.y - a.y, b.x - a.x);
@@ -90,13 +98,16 @@ export interface FrameDetection {
   found: number;
   /** True when the detected rotation exceeded the skew range and was clamped. */
   clamped: boolean;
+  /** The side inferred from the DIN ratio, else null; a completed side counts as found for the strict rule. */
+  completed: Side | null;
 }
 
 /**
  * The whole frame detection: working image -> edges -> corners in image
  * coordinates -> frame, with the number of edges found and whether the
  * rotation was clamped. `frame` is null when no edge was found or the result
- * is not a usable frame (too small, or not convex).
+ * is not a usable frame (too small, or not convex). With `completeDinEdge`
+ * a third edge is completed by the DIN ratio before the corners are formed.
  */
 export function detectFrameDetailed(
   working: ImageData,
@@ -104,18 +115,21 @@ export function detectFrameDetailed(
   current: Frame,
   imageWidth: number,
   scratch?: DetectBuffers,
+  options: DetectOptions = {},
 ): FrameDetection {
   const luminance = luminanceOf(working, scratch?.luminance);
   if (scratch) scratch.luminance = luminance;
-  const edges = detectEdges(luminance, layout.frame);
-  if (edges.found === 0) return { frame: null, found: 0, clamped: false };
+  let edges = detectEdges(luminance, layout.frame);
+  if (options.completeDinEdge) edges = completeDinEdge(edges, layout.frame) ?? edges;
+  const { found, completed } = edges;
+  if (found === 0) return { frame: null, found, clamped: false, completed };
   const back = invertAffine(layout.transform);
   const corners = mapQuad(edges.corners, (p) => applyAffine(back, p));
   const { frame, clamped } = frameFromCornersDetailed(corners, current);
   const minSide = MIN_FRAME_FRACTION * imageWidth;
-  if (!(frame.width >= minSide) || !(frame.height >= minSide)) return { frame: null, found: edges.found, clamped };
-  if (!quadValid(frame, imageWidth)) return { frame: null, found: edges.found, clamped };
-  return { frame, found: edges.found, clamped };
+  if (!(frame.width >= minSide) || !(frame.height >= minSide)) return { frame: null, found, clamped, completed };
+  if (!quadValid(frame, imageWidth)) return { frame: null, found, clamped, completed };
+  return { frame, found, clamped, completed };
 }
 
 /** The wand's detection: partial results are applied. */
@@ -125,13 +139,15 @@ export function detectFrame(
   current: Frame,
   imageWidth: number,
   scratch?: DetectBuffers,
+  options?: DetectOptions,
 ): Frame | null {
-  return detectFrameDetailed(working, layout, current, imageWidth, scratch).frame;
+  return detectFrameDetailed(working, layout, current, imageWidth, scratch, options).frame;
 }
 
 /**
- * The live detection's rule: all four edges found and the rotation
- * inside the skew range, otherwise there is no document.
+ * The live detection's rule: all four edges found (or three and the fourth
+ * completed from the DIN ratio) and the rotation inside the skew range,
+ * otherwise there is no document.
  */
 export function detectFrameStrict(
   working: ImageData,
@@ -139,8 +155,9 @@ export function detectFrameStrict(
   current: Frame,
   imageWidth: number,
   scratch?: DetectBuffers,
+  options?: DetectOptions,
 ): Frame | null {
-  const result = detectFrameDetailed(working, layout, current, imageWidth, scratch);
-  if (result.found < 4 || result.clamped) return null;
+  const result = detectFrameDetailed(working, layout, current, imageWidth, scratch, options);
+  if ((result.found < 4 && result.completed === null) || result.clamped) return null;
   return result.frame;
 }

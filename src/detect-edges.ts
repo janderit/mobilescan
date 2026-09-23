@@ -11,11 +11,12 @@
  * one point, a repeated-median line fit makes the edge robust to text and
  * shadows crossing the band, and the four lines intersect to corners in
  * working pixels. Pixels outside the image (transparent in the working copy)
- * never count.
+ * never count. With three edges found, `completeDinEdge` (v1.1) infers the
+ * fourth from the DIN A aspect ratio when it lands in that side's band.
  */
 
 import type { Frame, Point } from './model';
-import { rotationAbout, scaleAffine, translateAffine, type Affine, type Quad, type Rect } from './geometry';
+import { rotationAbout, scaleAffine, SQRT2, translateAffine, type Affine, type Quad, type Rect } from './geometry';
 import { luminance } from './color';
 
 /** Longer frame side of the working image for edge detection, in pixels. */
@@ -273,12 +274,24 @@ export interface EdgeDetection {
   found: number;
   /** the corners nw, ne, se, sw in working pixels */
   corners: Quad;
+  /** the side whose line was inferred from the DIN ratio (`completeDinEdge`), else null */
+  completed: Side | null;
 }
 
 /** Intersection of a horizontal-ish line (y = a + b x) with a vertical-ish one (x = a + b y). */
 function intersect(h: EdgeLine, v: EdgeLine): Point {
   const x = (v.a + v.b * h.a) / (1 - h.b * v.b);
   return { x, y: h.a + h.b * x };
+}
+
+/** The corners nw, ne, se, sw of four edge lines. */
+function cornersOf(lines: Record<Side, EdgeLine>): Quad {
+  return [
+    intersect(lines.n, lines.w),
+    intersect(lines.n, lines.e),
+    intersect(lines.s, lines.e),
+    intersect(lines.s, lines.w),
+  ];
 }
 
 /** Detects the four edges of a frame in the working luminance image. */
@@ -295,11 +308,51 @@ export function detectEdges(lum: Luminance, frame: Rect): EdgeDetection {
     lines[side] = fitEdge(sampleEdge(lum, frame, side), fallback[side]);
     if (lines[side].found) found += 1;
   }
-  const corners: Quad = [
-    intersect(lines.n, lines.w),
-    intersect(lines.n, lines.e),
-    intersect(lines.s, lines.e),
-    intersect(lines.s, lines.w),
-  ];
-  return { lines, found, corners };
+  return { lines, found, corners: cornersOf(lines), completed: null };
+}
+
+// ---- DIN completion (v1.1) ---------------------------------------------------
+
+const OPPOSITE: Record<Side, Side> = { n: 's', s: 'n', w: 'e', e: 'w' };
+
+/** The position across of a line at position `t` along it. */
+const lineAt = (line: EdgeLine, t: number): number => line.a + line.b * t;
+
+/**
+ * Completes a detection with exactly three edges found by the fourth: a line
+ * parallel to the opposite edge at the DIN A distance (the extent between the
+ * two adjacent edges times or divided by sqrt 2, whichever lands nearer to the
+ * frame line of the missing side), accepted only when that line lies in the
+ * missing side's search band, i.e. where the user aimed the frame. This is
+ * what a page in a spiral block needs: the bound edge is broken by holes and
+ * wire and never fits as a line, whichever side it is on. Null when there are
+ * not exactly three edges or the DIN edge is out of the band; the extent is
+ * measured at the opposite edge and at the frame line and averaged, an
+ * affine approximation of a perspective view that is within a few percent.
+ */
+export function completeDinEdge(edges: EdgeDetection, frame: Rect): EdgeDetection | null {
+  if (edges.found !== 3) return null;
+  const missing = SIDES.find((side) => !edges.lines[side].found)!;
+  const horizontal = missing === 'n' || missing === 's';
+  const opposite = edges.lines[OPPOSITE[missing]];
+  const [first, second] = horizontal ? [edges.lines.w, edges.lines.e] : [edges.lines.n, edges.lines.s];
+  // Across: the axis the missing edge is searched along; along: the edge's own direction.
+  const size = horizontal ? frame.height : frame.width;
+  const line =
+    missing === 'n' ? frame.y : missing === 's' ? frame.y + frame.height : missing === 'w' ? frame.x : frame.x + frame.width;
+  const inwardSign = missing === 'n' || missing === 'w' ? 1 : -1;
+  const centreAlong = horizontal ? frame.x + frame.width / 2 : frame.y + frame.height / 2;
+  const oppositeAt = lineAt(opposite, centreAlong);
+  const extentAt = (u: number): number => Math.abs(lineAt(second, u) - lineAt(first, u));
+  const extent = (extentAt(oppositeAt) + extentAt(line)) / 2;
+  // A perpendicular distance d between parallel lines is d * sqrt(1 + b^2) across.
+  const slope = Math.sqrt(1 + opposite.b * opposite.b);
+  const candidates = [extent * SQRT2, extent / SQRT2].map((d) => oppositeAt - inwardSign * d * slope);
+  const at = candidates.reduce((best, c) => (Math.abs(c - line) < Math.abs(best - line) ? c : best));
+  const outer = line - inwardSign * BAND_OUTSIDE * size;
+  const inner = line + inwardSign * BAND_INSIDE * size;
+  if (at < Math.min(outer, inner) || at > Math.max(outer, inner)) return null;
+  const completed: EdgeLine = { found: false, a: at - opposite.b * centreAlong, b: opposite.b };
+  const lines = { ...edges.lines, [missing]: completed } as Record<Side, EdgeLine>;
+  return { lines, found: edges.found, corners: cornersOf(lines), completed: missing };
 }

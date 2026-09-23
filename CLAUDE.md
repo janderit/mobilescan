@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-Versions v0.1 through v0.12 are implemented: capture + share, crop/rotate, brightness/contrast,
+Versions v0.1 through v0.12, v1.0.1 and v1.1 are implemented: capture + share, crop/rotate, brightness/contrast,
 UI polish, multi-page PDFs, loupe previews while dragging, shear / perspective correction,
 auto-detect for frame and tone, pinch zoom in the captured and edit views, live document
 detection in the camera view with auto-bake on capture, sharing a single page as a JPEG, and the
-frozen still of the green moment for a shutter pressed right after it. The repository contains the product spec
+frozen still of the green moment for a shutter pressed right after it, the install button, and the
+DIN completion of a third detected edge for pages in a spiral block. The repository contains the product spec
 (`README.md`), design intent documents with per-version definitions, icons and mockups
 (`intent/`), and the TypeScript + Vite app (`src/`, `test/`, `scripts/`, `public/`).
 
@@ -78,7 +79,7 @@ Read in this order before implementing anything:
 
 1. `README.md`: the authoritative UX spec.
 2. `intent/2026-09-22-spec-assessment-and-decisions.md`: decisions that resolve gaps in the spec.
-3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`, `intent/v1.0.1-install.md`).
+3. `intent/README.md` and the version file you are working on (`intent/v0.1-mvp.md` ... `intent/v0.12-frozen-still.md`, `intent/v1.0.1-install.md`, `intent/v1.1-din-completion.md`).
 
 Icons live in `intent/icons/` (24x24 stroke SVGs, use them verbatim in the app). Mockups in
 `intent/mockups/` are generated: edit `intent/mockups/generate.py` and run
@@ -148,7 +149,13 @@ the intent files hold the reasoning, the named constants in the code hold the nu
   `ImageData` maths runs on it; see the constants in `src/detect-edges.ts`, `src/detect-frame.ts`
   and `src/detect-tone.ts`. The wand keeps partial results and shows a pending frame or tone;
   nothing found calls `onNotice` and keeps the current state. Synchronous, no busy overlay; the tone
-  wand measures the source image, not the preview.
+  wand measures the source image, not the preview. DIN completion (v1.1): with exactly three edges
+  found, `completeDinEdge` (`src/detect-edges.ts`) infers the fourth parallel to its opposite at
+  the DIN A distance (the candidate of x sqrt 2 and / sqrt 2 nearer to the frame line), accepted
+  only inside that side's search band; the strict rule counts it as found and the wand applies it.
+  Switched by `DetectOptions` (`src/detect-frame.ts`); the pure maths never reads the flag,
+  `detectFrameIn` (`src/detect.ts`) fills the options from `settings.completeDinEdge`
+  (`src/settings.ts`, session state, on, no UI yet, never persisted).
 - **Live detect and the capture rule.** The camera view runs the strict rule (`detectFrameStrict`)
   on the video with `DetectionTracker` hysteresis (`src/live-detect.ts`) and turns the outline green
   on a hit. The toggle right of the shutter is a switch (`switchButton`, `role="switch"`), session state, on by default, never persisted. On
@@ -210,4 +217,4 @@ Crop/rotate view: [back] [crop+shear|rotate] [rotate 90 right] [auto] [confirm],
 v0.1 capture + share (MVP) → v0.2 crop/rotate → v0.3 brightness/contrast → v0.4 UI polish →
 v0.5 multi-page PDFs → v0.6 loupe previews → v0.7 shear → v0.8 auto-detect → v0.9 pinch zoom →
 v0.10 live detect → v0.11 share as JPEG → v0.12 frozen still → v1.0.0 release → v1.0.1 install
-button. Each version is independently deployable. Do not pull features from a later version into an earlier one.
+button → v1.1 DIN completion → v1.2 wide-angle lens (planned). Each version is independently deployable. Do not pull features from a later version into an earlier one.

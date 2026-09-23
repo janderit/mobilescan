@@ -145,10 +145,26 @@ after the steady moment the outline announced (`v0.12-frozen-still.md`).
 | Feedback | None: the captured view shows the page, whichever still it came from. A hint about which still was used would be text or a new icon for a detail the user cannot act on. |
 
 
-## v1.1 decisions (2026-09-23, wide-angle lens)
+## v1.1 decisions (2026-09-23, DIN completion for bound pages)
 
-Taken with Philip when v1.1 was added, from the question whether the user can switch between
-the 1x and the 0.5x/0.6x rear camera while aiming (`v1.1-wide-lens.md`).
+Taken with Philip when v1.1 was added, from the question whether a page in a spiral block can
+be detected from three edges with the fourth assumed from the DIN A format
+(`v1.1-din-completion.md`).
+
+| Topic | Decision |
+|---|---|
+| Three edges plus the ratio | Feasible as one pure step between the edge fit and the corners: `detectEdges` already reports every side's line and whether it was found, and everything downstream works on corners. |
+| Any side | The missing side is whichever did not fit; left, right, top and bottom bindings need no separate handling. |
+| Band as the guard | The inferred edge is accepted only inside the missing side's search band. Without it, letter paper, receipts and book pages would turn green with a confidently wrong edge. With it, the rule reads "the edge is where you aimed, and its position agrees with DIN". |
+| Orientation by the frame | Times or divided by sqrt 2: the candidate nearer to the frame line wins. The camera frame is portrait A-format and the user fits the page into it; in the editor a cropped frame carries the user's intent the same way. |
+| Perspective as affine | The extent between the adjacent edges is averaged between the opposite edge and the frame line. Three edges plus a ratio do not determine the fourth under perspective without the camera's intrinsics; the error is a millimetre or two near the binding, where the holes are anyway. |
+| Flag, no UI | `settings.completeDinEdge`, on, in a session settings module so it can become a user setting later. The pure maths takes `DetectOptions`; only `detectFrameIn` reads the settings, so tests drive the flag explicitly and the rules stay pure. |
+| Wand applies it too | The wand already applied partial results with the frame line for a missing edge; the completed edge is the same partial result, better placed. |
+
+## v1.2 decisions (2026-09-23, wide-angle lens)
+
+Taken with Philip when v1.2 was added, from the question whether the user can switch between
+the 1x and the 0.5x/0.6x rear camera while aiming (`v1.2-wide-lens.md`).
 
 | Topic | Decision |
 |---|---|

@@ -4,13 +4,15 @@
  * detect-frame.ts (frame from corners, detection rules), detect-tracker.ts
  * (live hysteresis) and detect-tone.ts (paper levels and tone). Only this
  * file touches a canvas: `detectFrameIn` renders the working copy with
- * `sampleImage` and `DetectScratch` keeps a `WorkingCanvas` across runs.
+ * `sampleImage` and `DetectScratch` keeps a `WorkingCanvas` across runs. It
+ * is also where the session settings (`settings.ts`) become `DetectOptions`.
  */
 
 import type { Frame } from './model';
 import { sampleImage, WorkingCanvas } from './canvas';
 import { frameWorkingLayout } from './detect-edges';
-import { detectFrame, detectFrameStrict, type DetectBuffers } from './detect-frame';
+import { detectFrame, detectFrameStrict, type DetectBuffers, type DetectOptions } from './detect-frame';
+import { settings } from './settings';
 
 export * from './detect-edges';
 export * from './detect-frame';
@@ -35,12 +37,18 @@ export function releaseDetectScratch(scratch: DetectScratch): void {
   delete scratch.luminance;
 }
 
+/** The detection switches of the session settings. */
+export function detectOptions(): DetectOptions {
+  return { completeDinEdge: settings.completeDinEdge };
+}
+
 /**
  * The whole pipeline on an image: renders the working copy of `frame`
- * (offsets ignored by the layout) from `image` and runs `rule` on it. The
- * wand's `detectFrame` by default; the live detection and the still after
- * the shutter pass `detectFrameStrict`. A caller that runs repeatedly hands
- * in a `scratch` so the working canvas and luminance arrays are reused.
+ * (offsets ignored by the layout) from `image` and runs `rule` on it with
+ * the session's `detectOptions`. The wand's `detectFrame` by default; the
+ * live detection and the still after the shutter pass `detectFrameStrict`.
+ * A caller that runs repeatedly hands in a `scratch` so the working canvas
+ * and luminance arrays are reused.
  */
 export function detectFrameIn(
   image: CanvasImageSource,
@@ -51,5 +59,5 @@ export function detectFrameIn(
 ): Frame | null {
   const layout = frameWorkingLayout(frame);
   const working = sampleImage(image, layout.transform, layout.width, layout.height, scratch?.canvas);
-  return rule(working, layout, frame, imageWidth, scratch);
+  return rule(working, layout, frame, imageWidth, scratch, detectOptions());
 }

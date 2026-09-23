@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AGREE_FRACTION,
   BAND_INSIDE,
+  completeDinEdge,
   createDetectScratch,
   DetectionTracker,
   detectEdges,
@@ -17,6 +18,7 @@ import {
   repeatedMedianLine,
   toneForLevels,
   toneWorkingLayout,
+  type DetectOptions,
   type WorkingLayout,
 } from '../src/detect';
 import { applyAffine, invertAffine, quadCorners, rotateVector, type Quad } from '../src/geometry';
@@ -374,6 +376,117 @@ describe('strict detection (v0.10)', () => {
 
   it('reports nothing found on a uniform image', () => {
     expect(strict(around, (p) => (insideImage(p) ? 0.5 : null))).toBeNull();
+  });
+});
+
+describe('DIN completion (v1.1)', () => {
+  const on = { completeDinEdge: true };
+  /**
+   * A page in a spiral block bound on the given side: bright paper whose
+   * bound edge is open (bright to the image border, so no line is found
+   * there), the other three edges on a dark table.
+   */
+  function boundScene(left: number, top: number, right: number, bottom: number, bound: 'n' | 'e' | 's' | 'w'): Scene {
+    return (p) => {
+      if (!insideImage(p)) return null;
+      const inside =
+        (bound === 'w' || p.x >= left) &&
+        (bound === 'e' || p.x <= right) &&
+        (bound === 'n' || p.y >= top) &&
+        (bound === 's' || p.y <= bottom);
+      return inside ? 0.8 : 0.2;
+    };
+  }
+
+  function run(frame: Frame, scene: Scene, options: DetectOptions = on) {
+    const layout = frameWorkingLayout(frame);
+    const working = renderWorking(layout, scene);
+    return {
+      detailed: detectFrameDetailed(working, layout, frame, IMAGE_W, undefined, options),
+      strict: detectFrameStrict(working, layout, frame, IMAGE_W, undefined, options),
+      wand: detectFrame(working, layout, frame, IMAGE_W, undefined, options),
+    };
+  }
+
+  // A portrait A-format page 900 wide, bound on top: its top edge is at 1425 - 900 * sqrt 2.
+  const dinTop = 1425 - 900 * Math.SQRT2;
+  const topBound = boundScene(150, 0, 1050, 1425, 'n');
+  // Left, right and bottom frame lines 3 % outside the paper edges; the top frame line 12 px above the DIN edge.
+  const frame: Frame = { cx: 600, cy: 140 + 1325 / 2, width: 954, height: 1325, angle: 0 };
+
+  it('completes a page bound on top from the DIN ratio and the strict rule accepts it', () => {
+    const { detailed, strict } = run(frame, topBound);
+    expect(detailed.found).toBe(3);
+    expect(detailed.completed).toBe('n');
+    expect(strict).not.toBeNull();
+    const corners = quadCorners(strict!);
+    expect(Math.abs(corners[0]!.y - dinTop)).toBeLessThan(3);
+    expect(Math.abs(corners[1]!.y - dinTop)).toBeLessThan(3);
+    expect(distance(corners[2]!, { x: 1050, y: 1425 })).toBeLessThan(2);
+    expect(distance(corners[3]!, { x: 150, y: 1425 })).toBeLessThan(2);
+  });
+
+  it('with the flag off the strict rule rejects the page and the wand keeps the frame line', () => {
+    const { detailed, strict, wand } = run(frame, topBound, {});
+    expect(detailed.found).toBe(3);
+    expect(detailed.completed).toBeNull();
+    expect(strict).toBeNull();
+    expect(quadCorners(wand!)[0]!.y).toBeCloseTo(140, 0);
+  });
+
+  it('picks the ratio whose edge lands nearer to the frame line (short side missing)', () => {
+    // Portrait page bound on the left: height 1273, so the width is height / sqrt 2 = 900.
+    const scene = boundScene(150, 150, 1050, 150 + 900 * Math.SQRT2, 'w');
+    const left: Frame = { cx: 120 + 960 / 2, cy: 122 + 1329 / 2, width: 960, height: 1329, angle: 0 };
+    const { detailed, strict } = run(left, scene);
+    expect(detailed.completed).toBe('w');
+    const corners = quadCorners(strict!);
+    expect(Math.abs(corners[0]!.x - 150)).toBeLessThan(3);
+    expect(Math.abs(corners[3]!.x - 150)).toBeLessThan(3);
+  });
+
+  it('rejects a non-DIN page whose inferred edge would fall outside the band', () => {
+    // 700 wide: the DIN top would be at 1425 - 990 = 435, 22 % of the frame height inside the top line.
+    const scene = boundScene(250, 0, 950, 1425, 'n');
+    const { detailed, strict, wand } = run(frame, scene);
+    expect(detailed.found).toBe(3);
+    expect(detailed.completed).toBeNull();
+    expect(strict).toBeNull();
+    // The wand still applies the three edges and keeps the top frame line.
+    expect(quadCorners(wand!)[0]!.y).toBeCloseTo(140, 0);
+  });
+
+  it('follows a rotated page: the completed edge is parallel to its opposite', () => {
+    const paper: Frame = { cx: 600, cy: 800, width: 900, height: 900 * Math.SQRT2, angle: (4 * Math.PI) / 180 };
+    const truth = quadCorners(paper);
+    // Bound on the bottom: bright below the paper's bottom edge as well.
+    const scene: Scene = (p) => {
+      if (!insideImage(p)) return null;
+      const local = rotateVector(p.x - paper.cx, p.y - paper.cy, -paper.angle);
+      return Math.abs(local.x) <= paper.width / 2 && local.y >= -paper.height / 2 ? 0.8 : 0.2;
+    };
+    const around: Frame = { cx: 600, cy: 800, width: 954, height: 1349, angle: 0 };
+    const { detailed, strict } = run(around, scene);
+    expect(detailed.completed).toBe('s');
+    expect(strict).not.toBeNull();
+    quadCorners(strict!).forEach((corner, i) => {
+      expect(distance(corner, truth[i]!)).toBeLessThan(6);
+    });
+  });
+
+  it('is a no-op on the pure step unless exactly three edges were found', () => {
+    const paper: Frame = { cx: 600, cy: 800, width: 900, height: 1250, angle: 0 };
+    const around: Frame = { cx: 600, cy: 800, width: 954, height: 1325, angle: 0 };
+    const layout = frameWorkingLayout(around);
+    const four = detectEdges(luminanceOf(renderWorking(layout, paperScene(paper))), layout.frame);
+    expect(four.found).toBe(4);
+    expect(completeDinEdge(four, layout.frame)).toBeNull();
+    const oneScene: Scene = (p) => (insideImage(p) ? (p.y < 300 ? 0.2 : 0.8) : null);
+    const oneFrame: Frame = { cx: 600, cy: 900, width: 1000, height: 1300, angle: 0 };
+    const oneLayout = frameWorkingLayout(oneFrame);
+    const one = detectEdges(luminanceOf(renderWorking(oneLayout, oneScene)), oneLayout.frame);
+    expect(one.found).toBe(1);
+    expect(completeDinEdge(one, oneLayout.frame)).toBeNull();
   });
 });
 
